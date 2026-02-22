@@ -1,0 +1,7 @@
+/target/
+Cargo.lock
+*.odb
+*.odb-wal
+*.odb-shm
+.DS_Store
+thumbs.db

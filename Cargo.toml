@@ -1,0 +1,29 @@
+[package]
+name = "overdrive-sdk"
+version = "1.0.0"
+edition = "2021"
+authors = ["AFOT <admin@afot.in>"]
+description = "Embeddable document database — like SQLite for JSON"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/afot/overdrivedb"
+homepage = "https://overdrive-db.com"
+readme = "README.md"
+keywords = ["database", "embedded", "json", "nosql", "sql"]
+categories = ["database-implementations"]
+
+[lib]
+name = "overdrive"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+overdrive-db = "0.2.0"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+uuid = { version = "1.10", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[build-dependencies]
+cbindgen = "0.28"
+
+[dev-dependencies]
+tempfile = "3.10"
