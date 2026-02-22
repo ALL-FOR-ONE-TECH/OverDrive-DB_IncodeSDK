@@ -104,7 +104,7 @@ fn main() {
 }
 ```
 
-**That's it.** No server to install. No docker. No config. Just `cargo add` and go.
+**That's it.** No server to install. No docker. No config. Just add the dependency and go.
 
 ---
 

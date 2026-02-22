@@ -2,17 +2,19 @@
 
 ## Installation
 
-Add OverDrive to your Rust project:
+**Option 1 — Download prebuilt binary** from [GitHub Releases](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest):
 
-```bash
-cargo add overdrive-sdk
-```
+| Platform | File |
+|---|---|
+| Windows x64 | `overdrive-windows-x64.dll` |
+| Linux x64 | `liboverdrive-linux-x64.so` |
+| macOS ARM64 | `liboverdrive-macos-arm64.dylib` |
 
-Or add to your `Cargo.toml` manually:
+**Option 2 — Add as Rust dependency (git):**
 
 ```toml
 [dependencies]
-overdrive-sdk = "1.0.0"
+overdrive-sdk = { git = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK.git" }
 ```
 
 ## Your First Database

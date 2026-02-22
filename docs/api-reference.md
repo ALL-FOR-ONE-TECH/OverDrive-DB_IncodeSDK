@@ -1,6 +1,6 @@
 # API Reference
 
-> Auto-generated docs: [docs.rs/overdrive-sdk](https://docs.rs/overdrive-sdk)
+> Full source: [GitHub — OverDrive-DB_SDK](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK)
 
 ## `OverDriveDB`
 
