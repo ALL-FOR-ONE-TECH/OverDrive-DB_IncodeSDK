@@ -5,10 +5,10 @@
     Import the package. Open a file. Query your data. <em>No server needed.</em>
   </p>
   <p align="center">
-    <a href="https://crates.io/crates/overdrive-sdk"><img src="https://img.shields.io/crates/v/overdrive-sdk.svg?style=flat-square&logo=rust&color=orange" alt="crates.io"/></a>
-    <a href="https://crates.io/crates/overdrive-sdk"><img src="https://img.shields.io/crates/d/overdrive-sdk.svg?style=flat-square&color=blue" alt="downloads"/></a>
-    <a href="https://docs.rs/overdrive-sdk"><img src="https://img.shields.io/docsrs/overdrive-sdk?style=flat-square&logo=docs.rs" alt="docs.rs"/></a>
+    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest"><img src="https://img.shields.io/github/v/release/ALL-FOR-ONE-TECH/OverDrive-DB_SDK?style=flat-square&logo=github&color=orange" alt="release"/></a>
+    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases"><img src="https://img.shields.io/github/downloads/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/total?style=flat-square&color=blue" alt="downloads"/></a>
     <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-green?style=flat-square" alt="license"/></a>
+    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blueviolet?style=flat-square" alt="platforms"/></a>
   </p>
 </p>
 
@@ -38,8 +38,19 @@ OverDrive is an **embeddable, zero-config document database** for Rust, Python, 
 
 ### Install
 
-```bash
-cargo add overdrive-sdk
+**Option 1 — Download prebuilt binary:**
+
+| Platform | Download |
+|---|---|
+| Windows x64 | [`overdrive.dll`](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest) |
+| Linux x64 | [`liboverdrive.so`](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest) |
+| macOS ARM64 | [`liboverdrive.dylib`](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest) |
+
+**Option 2 — Add as Rust dependency (git):**
+
+```toml
+[dependencies]
+overdrive-sdk = { git = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK.git" }
 ```
 
 ### Use
@@ -99,7 +110,7 @@ fn main() {
 
 ## API Reference
 
-> 📖 Full API docs: [docs.rs/overdrive-sdk](https://docs.rs/overdrive-sdk)
+> 📖 Full API docs: [docs/api-reference.md](docs/api-reference.md)
 
 ### Database Lifecycle
 
@@ -417,9 +428,9 @@ OverDrive-DB_SDK/
 
 | Resource | URL |
 |---|---|
-| 📦 **Crate (SDK)** | [crates.io/crates/overdrive-sdk](https://crates.io/crates/overdrive-sdk) |
-| 📦 **Crate (Engine)** | [crates.io/crates/overdrive-db](https://crates.io/crates/overdrive-db) |
-| 📖 **API Docs** | [docs.rs/overdrive-sdk](https://docs.rs/overdrive-sdk) |
+| 📦 **Download** | [GitHub Releases](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases) |
+| � **API Docs** | [docs/api-reference.md](docs/api-reference.md) |
+| � **Quick Start** | [docs/quickstart.md](docs/quickstart.md) |
 | 🏠 **Homepage** | [overdrive-db.com](https://overdrive-db.com) |
 | 🐛 **Issues** | [GitHub Issues](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/issues) |
 | 💬 **Discussions** | [GitHub Discussions](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/discussions) |
@@ -439,6 +450,6 @@ at your option.
 
 <p align="center">
   Built by <a href="https://github.com/ALL-FOR-ONE-TECH"><strong>ALL FOR ONE TECH</strong></a> • 
-  <a href="https://crates.io/crates/overdrive-sdk">crates.io</a> • 
-  <a href="https://docs.rs/overdrive-sdk">docs.rs</a>
+  <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases">Downloads</a> • 
+  <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/api-reference.md">API Docs</a>
 </p>
