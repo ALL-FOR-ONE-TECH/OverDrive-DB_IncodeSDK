@@ -483,7 +483,8 @@ OverDrive-DB_SDK/
 | 📦 **Download** | [GitHub Releases](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases) |
 | � **API Docs** | [docs/api-reference.md](docs/api-reference.md) |
 | � **Quick Start** | [docs/quickstart.md](docs/quickstart.md) |
-| 🏠 **Homepage** | [overdrive-db.com](https://overdrive-db.com) |
+| 🏠 **Homepage** | [Official Website](https://all-for-one-tech.github.io/OverDrive-DB_SDK/) |
+| 📖 **Developer Guide** | [Step-by-Step Guide](https://all-for-one-tech.github.io/OverDrive-DB_SDK/guide.html) |
 | 🐛 **Issues** | [GitHub Issues](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/issues) |
 | 💬 **Discussions** | [GitHub Discussions](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/discussions) |
 
@@ -503,7 +504,8 @@ at your option.
 <p align="center">
   Built by <a href="https://github.com/ALL-FOR-ONE-TECH"><strong>ALL FOR ONE TECH</strong></a> • 
   <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases">Downloads</a> • 
-  <a href="https://overdrive-db.com">Official Website</a>
+  <a href="https://all-for-one-tech.github.io/OverDrive-DB_SDK/">Official Website</a> •
+  <a href="https://all-for-one-tech.github.io/OverDrive-DB_SDK/guide.html">Developer Guide</a>
 </p>
 
 ---
