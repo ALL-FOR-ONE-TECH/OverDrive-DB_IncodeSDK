@@ -17,7 +17,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - name: Publish
         run: |
-          cd IncodeSDK/nodejs
+          cd nodejs
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -34,7 +34,7 @@ jobs:
         run: pip install build twine
       - name: Build and Publish
         run: |
-          cd IncodeSDK/python
+          cd python
           python -m build
           twine upload dist/*
         env:
@@ -50,7 +50,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Publish
         run: |
-          cd IncodeSDK
+          cd .
           cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} --allow-dirty
 
   publish-github-packages:
@@ -62,15 +62,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           server-id: github
-          settings-path: ${{ github.workspace }}/IncodeSDK/java
+          settings-path: java
       - name: Publish with Maven
         run: |
-          cd IncodeSDK/java
+          cd java
           mvn deploy -s settings.xml -DskipTests -Dgpg.skip=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,15 +78,20 @@ jobs:
   deploy-docs:
     name: Deploy Documentation Site
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
       - name: Upload to GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'IncodeSDK/docs-site/'
+          path: 'docs-site/'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-        permissions:
-          pages: write
-          id-token: write
