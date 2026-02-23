@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OverDrive-DB | Embeddable Hybrid SQL+NoSQL Database</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description"
+        content="OverDrive-DB is a high-performance, embeddable hybrid SQL+NoSQL document database. Like SQLite for JSON. No server, zero config, ACID compliant. #OverDriveDB #AFOT">
+    <meta name="keywords"
+        content="embedded database, json database, nosql, sql, rust database, python sdk, nodejs sdk, java sdk, document store, afot">
+    <meta name="author" content="ALL FOR ONE TECH (AFOT)">
+    <link rel="canonical" href="https://overdrive-db.com/">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://overdrive-db.com/">
+    <meta property="og:title" content="OverDrive-DB | Embeddable Document Database">
+    <meta property="og:description"
+        content="The power of SQL with the flexibility of JSON. Embed it directly in your app. No server required.">
+    <meta property="og:image" content="https://overdrive-db.com/logo/OverDrive-logo.ico">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://overdrive-db.com/">
+    <meta property="twitter:title" content="OverDrive-DB | Embeddable Document Database">
+    <meta property="twitter:description"
+        content="Embeddable hybrid SQL+NoSQL database for modern apps. Zero-config, single file.">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="../logo/OverDrive-logo.ico">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;600&display=swap"
+        rel="stylesheet">
+
+    <style>
+        :root {
+            --bg: #0a0c10;
+            --surface: #161b22;
+            --primary: #ff8c00;
+            --primary-glow: rgba(255, 140, 0, 0.3);
+            --text: #f0f6fc;
+            --text-dim: #8b949e;
+            --border: #30363d;
+            --accent: #58a6ff;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Smooth Background Gradient */
+        .bg-gradient {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background:
+                radial-gradient(circle at 80% 20%, rgba(255, 140, 0, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 20% 80%, rgba(88, 166, 255, 0.05) 0%, transparent 40%);
+            z-index: -1;
+        }
+
+        /* Navbar */
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 5%;
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 800;
+            font-size: 1.5rem;
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .logo-img {
+            width: 32px;
+            height: 32px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        /* Hero */
+        .hero {
+            padding: 8rem 5% 4rem;
+            text-align: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .badge-afot {
+            display: inline-block;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1rem;
+            border-radius: 99px;
+            font-size: 0.9rem;
+            color: var(--primary);
+            margin-bottom: 2rem;
+            font-weight: 600;
+        }
+
+        h1 {
+            font-size: 4.5rem;
+            font-weight: 800;
+            letter-spacing: -2px;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, #fff 0%, #8b949e 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            font-size: 1.4rem;
+            color: var(--text-dim);
+            max-width: 800px;
+            margin: 0 auto 3rem;
+        }
+
+        .hero-btns {
+            display: flex;
+            gap: 1.5rem;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 1rem 2.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #000;
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 0 40px var(--primary-glow);
+        }
+
+        .btn-secondary {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+            transform: translateY(-3px);
+        }
+
+        /* Features */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            padding: 5rem 5%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 2.5rem;
+            border-radius: 24px;
+            transition: all 0.3s;
+        }
+
+        .card:hover {
+            border-color: var(--primary);
+            transform: translateY(-5px);
+        }
+
+        .card i {
+            font-size: 2.5rem;
+            color: var(--primary);
+            margin-bottom: 1.5rem;
+            display: block;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .card p {
+            color: var(--text-dim);
+        }
+
+        /* Code Section */
+        .code-preview {
+            padding: 5rem 5%;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .code-container {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .code-header {
+            background: #161b22;
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            gap: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .code-tab {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .code-tab.active {
+            color: var(--primary);
+            border-bottom: 2px solid var(--primary);
+        }
+
+        .code-body {
+            padding: 2rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.95rem;
+            color: #d1d5db;
+            overflow-x: auto;
+        }
+
+        /* Footer */
+        footer {
+            padding: 5rem 5% 2rem;
+            background: #010409;
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .footer-logo {
+            margin-bottom: 2rem;
+        }
+
+        .hashtags {
+            margin-top: 1rem;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .copyright {
+            margin-top: 3rem;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+
+        /* Registry Badges */
+        .registries {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 4rem;
+        }
+
+        .registries img {
+            height: 25px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-gradient"></div>
+
+    <nav>
+        <a href="#" class="logo-box">
+            <img src="../logo/OverDrive-logo.ico" alt="OverDrive logo" class="logo-img">
+            OverDrive-DB
+        </a>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#quickstart">Quick Start</a>
+            <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK">GitHub</a>
+            <a href="https://afot.in">AFOT</a>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="badge-afot">Built by ALL FOR ONE TECH</div>
+        <h1>Embeddable DB.<br>Pure Performance.</h1>
+        <p>A hybrid SQL+NoSQL document database designed for high-concurrency and modern SDKs. Like SQLite, but native
+            to JSON. #OverDriveDB #AFOT</p>
+        <div class="hero-btns">
+            <a href="#quickstart" class="btn btn-primary">Get Started</a>
+            <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases" class="btn btn-secondary">Download
+                Binaries</a>
+        </div>
+
+        <div class="registries">
+            <a href="https://crates.io/crates/overdrive-db"><img
+                    src="https://img.shields.io/crates/v/overdrive-db?style=flat-square&color=orange&label=crates.io"
+                    alt="Rust"></a>
+            <a href="https://www.npmjs.com/package/overdrive-db"><img
+                    src="https://img.shields.io/npm/v/overdrive-db?style=flat-square&color=cb3837&label=npm"
+                    alt="Node.js"></a>
+            <a href="https://pypi.org/project/overdrive-db/"><img
+                    src="https://img.shields.io/pypi/v/overdrive-db?style=flat-square&color=3776ab&label=PyPI"
+                    alt="Python"></a>
+            <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/packages"><img
+                    src="https://img.shields.io/badge/maven-central-007ec6?style=flat-square&logo=apache-maven"
+                    alt="Java"></a>
+        </div>
+    </header>
+
+    <section id="features" class="features">
+        <div class="card">
+            <h3>⚡ Zero Config</h3>
+            <p>No servers to install. No background processes. Just include the library and open a file. Instantly
+                ready.</p>
+        </div>
+        <div class="card">
+            <h3>📄 Hybrid Engine</h3>
+            <p>The flexibility of JSON documents with the power of SQL queries. Insert JSON, query it with SELECT/WHERE.
+            </p>
+        </div>
+        <div class="card">
+            <h3>🔒 ACID Compliant</h3>
+            <p>Reliable MVCC transactions, WAL logging, and crash-safe storage. Your data is always consistent.</p>
+        </div>
+        <div class="card">
+            <h3>🔎 Search Built-in</h3>
+            <p>Powerful full-text search and secondary B-Tree indexing across your document collections.</p>
+        </div>
+        <div class="card">
+            <h3>🗜️ Efficient</h3>
+            <p>Zstd compression and AES-256 encryption at rest. Small binary footprint, massive performance.</p>
+        </div>
+        <div class="card">
+            <h3>🌍 Universal</h3>
+            <p>Native SDKs for Rust, Python, Node.js, Go, Java, and C/C++. One database, every language.</p>
+        </div>
+    </section>
+
+    <section id="quickstart" class="code-preview">
+        <div class="code-container">
+            <div class="code-header">
+                <div class="code-tab active">Rust</div>
+                <div class="code-tab">Node.js</div>
+                <div class="code-tab">Python</div>
+                <div class="code-tab">Java</div>
+            </div>
+            <div class="code-body">
+                <pre><code>// OverDrive-DB Rust Example
+use overdrive_db::OverDriveDB;
+
+let mut db = OverDriveDB::open("myapp.odb").unwrap();
+
+// Create a table and insert JSON
+db.create_table("users")?;
+db.insert("users", &json!({
+    "name": "Alice",
+    "role": "Admin",
+    "vibe": "Energetic"
+}))?;
+
+// SQL Query Power
+let results = db.query("SELECT * FROM users WHERE role = 'Admin'")?;
+println!("Found: {:?}", results);</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="footer-logo">
+            <img src="../logo/OverDrive-logo.ico" alt="AFOT logo" style="width: 50px; margin-bottom: 20px;">
+            <p style="font-weight: 800; font-size: 1.2rem;">ALL FOR ONE TECH</p>
+        </div>
+        <p>Empowering developers with high-performance embedded infrastructure.</p>
+        <div class="hashtags">#afot #OverDriveDb #InCodeSDK #EmbeddedDB</div>
+        <p class="copyright">&copy; 2026 ALL FOR ONE TECH. Licensed under MIT/Apache 2.0.</p>
+    </footer>
+
+    <script>
+        // Tab switching for code preview
+        const tabs = document.querySelectorAll('.code-tab');
+        const codeBlock = document.querySelector('.code-body code');
+
+        const snippets = {
+            'Rust': `// OverDrive-DB Rust Example
+use overdrive_db::OverDriveDB;
+
+let mut db = OverDriveDB::open("myapp.odb").unwrap();
+
+db.create_table("users")?;
+db.insert("users", &json!({
+    "name": "Alice",
+    "role": "Admin"
+}))?;
+
+let results = db.query("SELECT * FROM users WHERE role = 'Admin'")?;`,
+
+            'Node.js': `// OverDrive-DB Node.js Example
+const { OverDrive } = require('overdrive-db');
+
+const db = new OverDrive('myapp.odb');
+
+db.createTable('users');
+db.insert('users', {
+    name: 'Alice',
+    role: 'Admin'
+});
+
+const results = db.query("SELECT * FROM users");`,
+
+            'Python': `# OverDrive-DB Python Example
+from overdrive import OverDrive
+
+with OverDrive("myapp.odb") as db:
+    db.create_table("users")
+    db.insert("users", {
+        "name": "Alice",
+        "role": "Admin"
+    })
+    
+    results = db.query("SELECT * FROM users")`,
+
+            'Java': `// OverDrive-DB Java Example
+import com.afot.overdrive.OverDrive;
+
+OverDrive db = new OverDrive("myapp.odb");
+
+db.createTable("users");
+db.insert("users", "{\"name\":\"Alice\",\"role\":\"Admin\"}");
+
+String results = db.query("SELECT * FROM users");`
+        };
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                codeBlock.textContent = snippets[tab.textContent];
+            });
+        });
+    </script>
+</body>
+
+</html>

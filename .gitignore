@@ -5,3 +5,14 @@ Cargo.lock
 *.odb-shm
 .DS_Store
 thumbs.db
+
+# Dependencies and Build Artifacts
+/java/jdk17/
+/java/maven/
+/java/target/
+/python/dist/
+/python/overdrive_db.egg-info/
+/nodejs/node_modules/
+/publish-all.ps1
+/lib/
+

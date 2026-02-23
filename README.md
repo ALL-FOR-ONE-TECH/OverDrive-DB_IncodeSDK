@@ -5,12 +5,15 @@
     Import the package. Open a file. Query your data. <em>No server needed.</em>
   </p>
   <p align="center">
-    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest"><img src="https://img.shields.io/github/v/release/ALL-FOR-ONE-TECH/OverDrive-DB_SDK?style=flat-square&logo=github&color=orange" alt="release"/></a>
-    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases"><img src="https://img.shields.io/github/downloads/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/total?style=flat-square&color=blue" alt="downloads"/></a>
+    <a href="https://crates.io/crates/overdrive-db"><img src="https://img.shields.io/crates/v/overdrive-db?style=flat-square&color=orange&logo=rust" alt="crates.io"/></a>
+    <a href="https://www.npmjs.com/package/overdrive-db"><img src="https://img.shields.io/npm/v/overdrive-db?style=flat-square&color=cb3837&logo=npm" alt="npm"/></a>
+    <a href="https://pypi.org/project/overdrive-db/"><img src="https://img.shields.io/pypi/v/overdrive-db?style=flat-square&color=3776ab&logo=python" alt="PyPI"/></a>
+    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/packages"><img src="https://img.shields.io/badge/maven-central-007ec6?style=flat-square&logo=apache-maven" alt="maven"/></a>
     <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-green?style=flat-square" alt="license"/></a>
-    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blueviolet?style=flat-square" alt="platforms"/></a>
   </p>
 </p>
+
+#afot #OverDriveDb #InCodeSDK #EmbeddedDB
 
 ---
 
@@ -46,11 +49,11 @@ OverDrive is an **embeddable, zero-config document database** for Rust, Python, 
 | Linux x64 | [`liboverdrive.so`](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest) |
 | macOS ARM64 | [`liboverdrive.dylib`](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest) |
 
-**Option 2 — Add as Rust dependency (git):**
+**Option 2 — Add as Rust dependency:**
 
 ```toml
 [dependencies]
-overdrive-sdk = { git = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK.git" }
+overdrive-db = "1.1.0"
 ```
 
 ### Use
@@ -182,7 +185,7 @@ SHOW TABLES
 ## Python SDK
 
 ```bash
-pip install overdrive-db   # Coming soon to PyPI
+pip install overdrive-db
 ```
 
 ```python
@@ -222,7 +225,7 @@ with OverDrive("myapp.odb") as db:
 ## Node.js SDK
 
 ```bash
-npm install overdrive-db   # Coming soon to npm
+npm install overdrive-db
 ```
 
 ```javascript
@@ -299,6 +302,55 @@ int main() {
 ```
 
 > **Memory rule**: Every `char*` returned by `overdrive_*` functions must be freed with `overdrive_free_string()`. The `ODB*` handle must be closed with `overdrive_close()`.
+
+---
+
+## Go SDK
+
+```bash
+go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/go
+```
+
+```go
+import "github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/go"
+
+func main() {
+    db, _ := overdrive.Open("myapp.odb")
+    defer db.Close()
+
+    db.CreateTable("users")
+    id, _ := db.Insert("users", map[string]any{"name": "Alice", "age": 30})
+    
+    // SQL Query
+    results, _ := db.Query("SELECT * FROM users WHERE age > 25")
+}
+```
+
+---
+
+## Java SDK
+
+```xml
+<!-- Add to pom.xml -->
+<dependency>
+    <groupId>com.afot</groupId>
+    <artifactId>overdrive-db</artifactId>
+    <version>1.0.1</version>
+</dependency>
+```
+
+```java
+import com.afot.overdrive.OverDrive;
+
+public class Main {
+    public static void main(String[] args) {
+        try (OverDrive db = new OverDrive("myapp.odb")) {
+            db.createTable("users");
+            String id = db.insert("users", "{\"name\":\"Alice\"}");
+        }
+    }
+}
+```
 
 ---
 
@@ -451,5 +503,9 @@ at your option.
 <p align="center">
   Built by <a href="https://github.com/ALL-FOR-ONE-TECH"><strong>ALL FOR ONE TECH</strong></a> • 
   <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases">Downloads</a> • 
-  <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/api-reference.md">API Docs</a>
+  <a href="https://overdrive-db.com">Official Website</a>
 </p>
+
+---
+
+#afot #OverDriveDb #InCodeSDK #EmbeddedDB #MrV2K #AllForOneTech #EmbeddeDB #HybridDB

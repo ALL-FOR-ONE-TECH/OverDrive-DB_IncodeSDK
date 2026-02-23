@@ -17,8 +17,6 @@
 use crate::{OverDriveDB, QueryResult};
 use crate::result::{SdkResult, SdkError};
 use serde_json::Value;
-use overdrive_db::query::aggregation::{AggregateFunc, Aggregator};
-use overdrive_db::query::orderby::{OrderBy, SortDirection, Sorter};
 
 /// Execute an SQL query against the embedded database
 pub fn execute(db: &mut OverDriveDB, sql: &str) -> SdkResult<QueryResult> {
@@ -63,11 +61,11 @@ fn tokenize(input: &str) -> Vec<String> {
         // Quoted string
         if c == '\'' || c == '"' {
             let quote = c;
-            chars.next(); // consume opening quote
+            chars.next();
             let mut s = String::new();
             while let Some(&ch) = chars.peek() {
                 if ch == quote {
-                    chars.next(); // consume closing quote
+                    chars.next();
                     break;
                 }
                 if ch == '\\' {
@@ -144,12 +142,11 @@ fn tokenize(input: &str) -> Vec<String> {
 
 /// Execute SELECT query
 fn execute_select(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryResult> {
-    // Parse: SELECT <columns> FROM <table> [WHERE ...] [ORDER BY ...] [LIMIT n] [OFFSET n]
     let mut pos = 1; // skip "SELECT"
     
     // Parse columns
     let mut columns: Vec<String> = Vec::new();
-    let mut aggregates: Vec<AggregateFunc> = Vec::new();
+    let mut aggregates: Vec<(String, String)> = Vec::new(); // (func_name, arg)
     
     while pos < tokens.len() {
         let upper = tokens[pos].to_uppercase();
@@ -160,13 +157,12 @@ fn execute_select(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryRes
         let col = tokens[pos].trim_end_matches(',').to_string();
         
         // Check for aggregate functions
-        if let Some(agg) = try_parse_aggregate(&tokens, &mut pos) {
+        if let Some(agg) = try_parse_aggregate(tokens, &mut pos) {
             aggregates.push(agg);
         } else {
             columns.push(col);
         }
         
-        // Skip commas
         if pos < tokens.len() && tokens[pos] == "," {
             pos += 1;
         } else {
@@ -187,9 +183,8 @@ fn execute_select(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryRes
     let table = &tokens[pos];
     pos += 1;
     
-    // Get all data from table
-    let engine_db = db.db()?;
-    let mut data = engine_db.scan_json(table)?;
+    // Get all data from table via dynamic FFI
+    let mut data = db.scan(table)?;
     
     // Parse WHERE clause
     if pos < tokens.len() && tokens[pos].to_uppercase() == "WHERE" {
@@ -200,9 +195,9 @@ fn execute_select(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryRes
     // Handle aggregates
     if !aggregates.is_empty() {
         let mut result_row = serde_json::Map::new();
-        for agg in &aggregates {
-            let value = Aggregator::execute(agg, &data);
-            let key = format!("{:?}", agg);
+        for (func, arg) in &aggregates {
+            let value = execute_aggregate(func, arg, &data);
+            let key = format!("{}({})", func, arg);
             result_row.insert(key, value);
         }
         return Ok(QueryResult {
@@ -215,24 +210,23 @@ fn execute_select(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryRes
     
     // Parse ORDER BY
     if pos < tokens.len() && tokens[pos].to_uppercase() == "ORDER" {
-        pos += 1; // skip ORDER
+        pos += 1;
         if pos < tokens.len() && tokens[pos].to_uppercase() == "BY" {
-            pos += 1; // skip BY
+            pos += 1;
         }
         if pos < tokens.len() {
-            let col = tokens[pos].trim_end_matches(',').to_string();
+            let sort_col = tokens[pos].trim_end_matches(',').to_string();
             pos += 1;
-            let dir = if pos < tokens.len() && tokens[pos].to_uppercase() == "DESC" {
+            let descending = if pos < tokens.len() && tokens[pos].to_uppercase() == "DESC" {
                 pos += 1;
-                SortDirection::Desc
+                true
             } else {
                 if pos < tokens.len() && tokens[pos].to_uppercase() == "ASC" {
                     pos += 1;
                 }
-                SortDirection::Asc
+                false
             };
-            let order = OrderBy::new(&col, dir);
-            Sorter::sort(&mut data, &order);
+            sort_data(&mut data, &sort_col, descending);
         }
     }
     
@@ -252,7 +246,7 @@ fn execute_select(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryRes
         pos += 1;
         if pos < tokens.len() {
             offset = tokens[pos].parse().unwrap_or(0);
-            let _ = pos; // suppress unused warning
+            let _ = pos;
         }
     }
     
@@ -297,7 +291,7 @@ fn execute_select(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryRes
 }
 
 /// Try to parse an aggregate function like COUNT(*), SUM(col), AVG(col)
-fn try_parse_aggregate(tokens: &[String], pos: &mut usize) -> Option<AggregateFunc> {
+fn try_parse_aggregate(tokens: &[String], pos: &mut usize) -> Option<(String, String)> {
     let upper = tokens[*pos].to_uppercase();
     let func_names = ["COUNT", "SUM", "AVG", "MIN", "MAX"];
     
@@ -305,18 +299,20 @@ fn try_parse_aggregate(tokens: &[String], pos: &mut usize) -> Option<AggregateFu
         return None;
     }
     
-    // Check for opening paren
     if *pos + 1 >= tokens.len() || tokens[*pos + 1] != "(" {
-        // Could be COUNT(*) already combined
         let combined = upper.clone();
         if combined.contains('(') {
-            return AggregateFunc::parse(&combined);
+            // Parse inline like COUNT(*)
+            let paren_start = combined.find('(')?;
+            let paren_end = combined.find(')')?;
+            let func = &combined[..paren_start];
+            let arg = &combined[paren_start+1..paren_end];
+            return Some((func.to_string(), arg.to_string()));
         }
         return None;
     }
     
-    // Reconstruct: FUNC(arg)
-    let func_name = &tokens[*pos];
+    let func_name = tokens[*pos].to_uppercase();
     *pos += 1; // skip func name
     *pos += 1; // skip (
     
@@ -328,29 +324,83 @@ fn try_parse_aggregate(tokens: &[String], pos: &mut usize) -> Option<AggregateFu
         return None;
     };
     
-    // skip closing )
     if *pos < tokens.len() && tokens[*pos] == ")" {
         *pos += 1;
     }
     
-    let full = format!("{}({})", func_name, arg);
-    AggregateFunc::parse(&full)
+    Some((func_name, arg))
+}
+
+/// Execute an aggregate function
+fn execute_aggregate(func: &str, arg: &str, data: &[Value]) -> Value {
+    match func {
+        "COUNT" => Value::from(data.len()),
+        "SUM" => {
+            let sum: f64 = data.iter()
+                .filter_map(|row| row.get(arg).and_then(|v| v.as_f64()))
+                .sum();
+            Value::from(sum)
+        }
+        "AVG" => {
+            let vals: Vec<f64> = data.iter()
+                .filter_map(|row| row.get(arg).and_then(|v| v.as_f64()))
+                .collect();
+            if vals.is_empty() {
+                Value::Null
+            } else {
+                Value::from(vals.iter().sum::<f64>() / vals.len() as f64)
+            }
+        }
+        "MIN" => {
+            data.iter()
+                .filter_map(|row| row.get(arg).and_then(|v| v.as_f64()))
+                .fold(None, |min: Option<f64>, v| Some(min.map_or(v, |m: f64| m.min(v))))
+                .map(Value::from)
+                .unwrap_or(Value::Null)
+        }
+        "MAX" => {
+            data.iter()
+                .filter_map(|row| row.get(arg).and_then(|v| v.as_f64()))
+                .fold(None, |max: Option<f64>, v| Some(max.map_or(v, |m: f64| m.max(v))))
+                .map(Value::from)
+                .unwrap_or(Value::Null)
+        }
+        _ => Value::Null,
+    }
+}
+
+/// Sort data by a column
+fn sort_data(data: &mut Vec<Value>, column: &str, descending: bool) {
+    data.sort_by(|a, b| {
+        let va = a.get(column);
+        let vb = b.get(column);
+        
+        let cmp = match (va, vb) {
+            (Some(Value::Number(a)), Some(Value::Number(b))) => {
+                a.as_f64().unwrap_or(0.0).partial_cmp(&b.as_f64().unwrap_or(0.0))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }
+            (Some(Value::String(a)), Some(Value::String(b))) => a.cmp(b),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
+        };
+        
+        if descending { cmp.reverse() } else { cmp }
+    });
 }
 
 /// Apply WHERE filtering to data
 fn apply_where_filter(data: Vec<Value>, tokens: &[String], pos: &mut usize) -> Vec<Value> {
-    // Parse simple conditions: col op value [AND/OR col op value ...]
-    let mut conditions: Vec<(String, String, String)> = Vec::new(); // (col, op, val)
+    let mut conditions: Vec<(String, String, String)> = Vec::new();
     let mut logical_ops: Vec<String> = Vec::new();
     
     while *pos < tokens.len() {
         let upper = tokens[*pos].to_uppercase();
-        // Stop at ORDER, LIMIT, OFFSET, GROUP
         if ["ORDER", "LIMIT", "OFFSET", "GROUP"].contains(&upper.as_str()) {
             break;
         }
         
-        // Parse: column operator value
         if *pos + 2 < tokens.len() {
             let col = tokens[*pos].clone();
             let op = tokens[*pos + 1].clone();
@@ -358,7 +408,6 @@ fn apply_where_filter(data: Vec<Value>, tokens: &[String], pos: &mut usize) -> V
             conditions.push((col, op, val));
             *pos += 3;
             
-            // Check for AND/OR
             if *pos < tokens.len() {
                 let next_upper = tokens[*pos].to_uppercase();
                 if next_upper == "AND" || next_upper == "OR" {
@@ -402,12 +451,11 @@ fn evaluate_condition(row: &Value, condition: &(String, String, String)) -> bool
         None => return false,
     };
     
-    // Strip quotes from value
     let clean_val = val.trim_matches('\'').trim_matches('"');
     
     match op.as_str() {
         "=" | "==" => {
-            if let Some(n) = clean_val.parse::<f64>().ok() {
+            if let Ok(n) = clean_val.parse::<f64>() {
                 field_val.as_f64().map_or(false, |fv| (fv - n).abs() < f64::EPSILON)
             } else {
                 field_val.as_str().map_or(false, |s| s == clean_val)
@@ -415,7 +463,7 @@ fn evaluate_condition(row: &Value, condition: &(String, String, String)) -> bool
             }
         }
         "!=" | "<>" => {
-            if let Some(n) = clean_val.parse::<f64>().ok() {
+            if let Ok(n) = clean_val.parse::<f64>() {
                 field_val.as_f64().map_or(true, |fv| (fv - n).abs() >= f64::EPSILON)
             } else {
                 field_val.as_str().map_or(true, |s| s != clean_val)
@@ -444,14 +492,12 @@ fn compare_values(field: &Value, val: &str) -> i32 {
 
 /// Execute INSERT query
 fn execute_insert(db: &mut OverDriveDB, tokens: &[String], raw_sql: &str) -> SdkResult<QueryResult> {
-    // INSERT INTO <table> {json}
     if tokens.len() < 3 || tokens[1].to_uppercase() != "INTO" {
         return Err(SdkError::InvalidQuery("Expected INSERT INTO <table> {json}".to_string()));
     }
     
     let table = &tokens[2];
     
-    // Find the JSON part — look for { in the raw sql
     let json_str = if let Some(brace_pos) = raw_sql.find('{') {
         &raw_sql[brace_pos..]
     } else {
@@ -473,20 +519,16 @@ fn execute_insert(db: &mut OverDriveDB, tokens: &[String], raw_sql: &str) -> Sdk
 
 /// Execute UPDATE query
 fn execute_update(db: &mut OverDriveDB, tokens: &[String], raw_sql: &str) -> SdkResult<QueryResult> {
-    // UPDATE <table> SET {json} [WHERE ...]
     if tokens.len() < 3 {
         return Err(SdkError::InvalidQuery("Expected UPDATE <table> SET {json}".to_string()));
     }
     
     let table = tokens[1].clone();
     
-    // Find SET keyword
     let set_pos = tokens.iter().position(|t| t.to_uppercase() == "SET")
         .ok_or_else(|| SdkError::InvalidQuery("Expected SET keyword".to_string()))?;
     
-    // Find JSON object after SET
-    let json_str = if let Some(brace_pos) = raw_sql[..].find('{') {
-        // Find the matching closing brace
+    let json_str = if let Some(brace_pos) = raw_sql.find('{') {
         let sub = &raw_sql[brace_pos..];
         let mut depth = 0;
         let mut end = 0;
@@ -503,13 +545,11 @@ fn execute_update(db: &mut OverDriveDB, tokens: &[String], raw_sql: &str) -> Sdk
     let updates: Value = serde_json::from_str(json_str)
         .map_err(|e| SdkError::InvalidQuery(format!("Invalid JSON: {}", e)))?;
     
-    // Get all data to find matching rows
-    let engine_db = db.db()?;
-    let all_data = engine_db.scan_json(&table)?;
+    // Get all data via scan to find matching rows
+    let all_data = db.scan(&table)?;
     
     // Parse WHERE if present
     let mut where_pos = set_pos + 1;
-    // Skip past the JSON token
     while where_pos < tokens.len() && tokens[where_pos].to_uppercase() != "WHERE" {
         where_pos += 1;
     }
@@ -544,18 +584,14 @@ fn execute_update(db: &mut OverDriveDB, tokens: &[String], raw_sql: &str) -> Sdk
 
 /// Execute DELETE query
 fn execute_delete(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryResult> {
-    // DELETE FROM <table> [WHERE ...]
     if tokens.len() < 3 || tokens[1].to_uppercase() != "FROM" {
         return Err(SdkError::InvalidQuery("Expected DELETE FROM <table>".to_string()));
     }
     
     let table = tokens[2].clone();
     
-    // Get all data
-    let engine_db = db.db()?;
-    let all_data = engine_db.scan_json(&table)?;
+    let all_data = db.scan(&table)?;
     
-    // Parse WHERE clause
     let mut pos = 3;
     let matched: Vec<Value>;
     if pos < tokens.len() && tokens[pos].to_uppercase() == "WHERE" {
@@ -596,12 +632,7 @@ fn execute_create(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryRes
     let name = &tokens[2];
     db.create_table(name)?;
     
-    Ok(QueryResult {
-        rows: Vec::new(),
-        columns: Vec::new(),
-        rows_affected: 0,
-        execution_time_ms: 0.0,
-    })
+    Ok(QueryResult::empty())
 }
 
 /// Execute DROP TABLE
@@ -616,12 +647,7 @@ fn execute_drop(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryResul
     let name = &tokens[2];
     db.drop_table(name)?;
     
-    Ok(QueryResult {
-        rows: Vec::new(),
-        columns: Vec::new(),
-        rows_affected: 0,
-        execution_time_ms: 0.0,
-    })
+    Ok(QueryResult::empty())
 }
 
 /// Execute SHOW TABLES

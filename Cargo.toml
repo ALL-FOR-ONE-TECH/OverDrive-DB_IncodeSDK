@@ -1,22 +1,39 @@
 [package]
-name = "overdrive-sdk"
-version = "1.0.0"
+name = "overdrive-db"
+version = "1.1.0"
 edition = "2021"
 authors = ["AFOT <admin@afot.in>"]
-description = "Embeddable document database — like SQLite for JSON"
+description = "OverDrive-DB — Embeddable hybrid SQL+NoSQL database. Like SQLite for JSON. #OverDriveDB #AFOT"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/afot/overdrivedb"
+repository = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK"
 homepage = "https://overdrive-db.com"
 readme = "README.md"
 keywords = ["database", "embedded", "json", "nosql", "sql"]
 categories = ["database-implementations"]
+exclude = [
+    "java/",
+    "python/",
+    "nodejs/",
+    "go/",
+    "c/",
+    "docs/",
+    "examples/",
+    "logo/",
+    "target/",
+    "*.odb",
+    "publish-all.ps1",
+]
 
 [lib]
 name = "overdrive"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+
 [dependencies]
-overdrive-db = "0.2.0"
+# Dynamic FFI loading — loads prebuilt native library at runtime
+libloading = "0.8"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 uuid = { version = "1.10", features = ["v4"] }

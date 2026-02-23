@@ -63,21 +63,9 @@ impl From<std::io::Error> for SdkError {
     }
 }
 
-impl From<overdrive_db::error::DatabaseError> for SdkError {
-    fn from(e: overdrive_db::error::DatabaseError) -> Self {
-        match e {
-            overdrive_db::error::DatabaseError::Io(io_err) => SdkError::IoError(io_err),
-            overdrive_db::error::DatabaseError::Corrupted(msg) => SdkError::Internal(msg),
-            overdrive_db::error::DatabaseError::KeyNotFound(msg) => SdkError::DocumentNotFound(msg),
-            overdrive_db::error::DatabaseError::TableNotFound(msg) => SdkError::TableNotFound(msg),
-            overdrive_db::error::DatabaseError::Connection(msg) => SdkError::Internal(msg),
-            overdrive_db::error::DatabaseError::Query(msg) => SdkError::InvalidQuery(msg),
-            overdrive_db::error::DatabaseError::TransactionError(msg) => SdkError::TransactionError(msg),
-            overdrive_db::error::DatabaseError::Validation(msg) => SdkError::ConstraintViolation(msg),
-            overdrive_db::error::DatabaseError::Json(e) => SdkError::SerializationError(e.to_string()),
-            overdrive_db::error::DatabaseError::Serialization(e) => SdkError::SerializationError(e.to_string()),
-            _ => SdkError::Internal(format!("{}", e)),
-        }
+impl From<String> for SdkError {
+    fn from(e: String) -> Self {
+        SdkError::Internal(e)
     }
 }
 

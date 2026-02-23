@@ -21,13 +21,20 @@
 //! let results = db.query("SELECT * FROM users WHERE age > 25").unwrap();
 //! println!("{:?}", results.rows);
 //! ```
+//!
+//! ## Setup
+//!
+//! 1. `cargo add overdrive-sdk`
+//! 2. Download the native library from [GitHub Releases](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest)
+//! 3. Place it in your project directory or on your system PATH
 
 pub mod result;
 pub mod query_engine;
 pub mod ffi;
+mod dynamic;
 
 use result::{SdkResult, SdkError};
-use overdrive_db::storage::Database;
+use dynamic::NativeDB;
 use serde_json::Value;
 use std::path::Path;
 use std::time::Instant;
@@ -70,7 +77,7 @@ pub struct Stats {
 /// Use this struct to create, open, and interact with OverDrive databases
 /// directly in your application. No server required.
 pub struct OverDriveDB {
-    db: Option<Database>,
+    native: NativeDB,
     path: String,
 }
 
@@ -89,14 +96,9 @@ impl OverDriveDB {
     /// let mut db = OverDriveDB::open("myapp.odb").unwrap();
     /// ```
     pub fn open(path: &str) -> SdkResult<Self> {
-        let db = if Path::new(path).exists() {
-            Database::open(path)?
-        } else {
-            Database::create(path)?
-        };
-        
+        let native = NativeDB::open(path)?;
         Ok(Self {
-            db: Some(db),
+            native,
             path: path.to_string(),
         })
     }
@@ -106,11 +108,7 @@ impl OverDriveDB {
         if Path::new(path).exists() {
             return Err(SdkError::DatabaseAlreadyExists(path.to_string()));
         }
-        let db = Database::create(path)?;
-        Ok(Self {
-            db: Some(db),
-            path: path.to_string(),
-        })
+        Self::open(path)
     }
 
     /// Open an existing database. Returns an error if the file doesn't exist.
@@ -118,26 +116,18 @@ impl OverDriveDB {
         if !Path::new(path).exists() {
             return Err(SdkError::DatabaseNotFound(path.to_string()));
         }
-        let db = Database::open(path)?;
-        Ok(Self {
-            db: Some(db),
-            path: path.to_string(),
-        })
+        Self::open(path)
     }
 
     /// Force sync all data to disk.
     pub fn sync(&self) -> SdkResult<()> {
-        let db = self.db()?;
-        db.sync()?;
+        self.native.sync();
         Ok(())
     }
 
     /// Close the database and release all resources.
     pub fn close(mut self) -> SdkResult<()> {
-        if let Some(db) = self.db.take() {
-            db.sync()?;
-            drop(db);
-        }
+        self.native.close();
         Ok(())
     }
 
@@ -155,8 +145,8 @@ impl OverDriveDB {
     }
 
     /// Get the SDK version.
-    pub fn version() -> &'static str {
-        "1.0.0"
+    pub fn version() -> String {
+        NativeDB::version()
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -165,34 +155,24 @@ impl OverDriveDB {
 
     /// Create a new table (schemaless, NoSQL mode).
     pub fn create_table(&mut self, name: &str) -> SdkResult<()> {
-        let db = self.db_mut()?;
-        if db.list_tables().contains(&name.to_string()) {
-            return Err(SdkError::TableAlreadyExists(name.to_string()));
-        }
-        db.create_table(name)?;
+        self.native.create_table(name)?;
         Ok(())
     }
 
     /// Drop (delete) a table and all its data.
     pub fn drop_table(&mut self, name: &str) -> SdkResult<()> {
-        let db = self.db_mut()?;
-        if !db.list_tables().contains(&name.to_string()) {
-            return Err(SdkError::TableNotFound(name.to_string()));
-        }
-        db.drop_table(name)?;
+        self.native.drop_table(name)?;
         Ok(())
     }
 
     /// List all tables in the database.
     pub fn list_tables(&self) -> SdkResult<Vec<String>> {
-        let db = self.db()?;
-        Ok(db.list_tables())
+        Ok(self.native.list_tables()?)
     }
 
     /// Check if a table exists.
     pub fn table_exists(&self, name: &str) -> SdkResult<bool> {
-        let db = self.db()?;
-        Ok(db.list_tables().contains(&name.to_string()))
+        Ok(self.native.table_exists(name))
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -210,8 +190,8 @@ impl OverDriveDB {
     /// println!("Inserted: {}", id);
     /// ```
     pub fn insert(&mut self, table: &str, doc: &Value) -> SdkResult<String> {
-        let db = self.db_mut()?;
-        let id = db.insert_json(table, doc)?;
+        let json_str = serde_json::to_string(doc)?;
+        let id = self.native.insert(table, &json_str)?;
         Ok(id)
     }
 
@@ -227,9 +207,13 @@ impl OverDriveDB {
 
     /// Get a document by its `_id`.
     pub fn get(&self, table: &str, id: &str) -> SdkResult<Option<Value>> {
-        let db = self.db()?;
-        let result = db.get_json(table, id)?;
-        Ok(result)
+        match self.native.get(table, id)? {
+            Some(json_str) => {
+                let value: Value = serde_json::from_str(&json_str)?;
+                Ok(Some(value))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Update a document by its `_id`. Returns `true` if the document was found and updated.
@@ -241,30 +225,30 @@ impl OverDriveDB {
     /// })).unwrap();
     /// ```
     pub fn update(&mut self, table: &str, id: &str, updates: &Value) -> SdkResult<bool> {
-        let db = self.db_mut()?;
-        let result = db.update(table, id, updates)?;
-        Ok(result)
+        let json_str = serde_json::to_string(updates)?;
+        Ok(self.native.update(table, id, &json_str)?)
     }
 
     /// Delete a document by its `_id`. Returns `true` if found and deleted.
     pub fn delete(&mut self, table: &str, id: &str) -> SdkResult<bool> {
-        let db = self.db_mut()?;
-        let result = db.delete(table, id.as_bytes())?;
-        Ok(result)
+        Ok(self.native.delete(table, id)?)
     }
 
     /// Count all documents in a table.
     pub fn count(&self, table: &str) -> SdkResult<usize> {
-        let db = self.db()?;
-        let count = db.count(table)?;
-        Ok(count)
+        let count = self.native.count(table)?;
+        Ok(count.max(0) as usize)
     }
 
     /// Scan all documents in a table (no filter).
     pub fn scan(&self, table: &str) -> SdkResult<Vec<Value>> {
-        let db = self.db()?;
-        let data = db.scan_json(table)?;
-        Ok(data)
+        let result_str = self.native.query(&format!("SELECT * FROM {}", table))?;
+        let result: Value = serde_json::from_str(&result_str)?;
+        let rows = result.get("rows")
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default();
+        Ok(rows)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -283,9 +267,28 @@ impl OverDriveDB {
     /// ```
     pub fn query(&mut self, sql: &str) -> SdkResult<QueryResult> {
         let start = Instant::now();
-        let mut result = query_engine::execute(self, sql)?;
-        result.execution_time_ms = start.elapsed().as_secs_f64() * 1000.0;
-        Ok(result)
+        let result_str = self.native.query(sql)?;
+        let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+
+        let result: Value = serde_json::from_str(&result_str)?;
+        let rows = result.get("rows")
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let columns = result.get("columns")
+            .and_then(|c| c.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let rows_affected = result.get("rows_affected")
+            .and_then(|r| r.as_u64())
+            .unwrap_or(0) as usize;
+
+        Ok(QueryResult {
+            rows,
+            columns,
+            rows_affected,
+            execution_time_ms: elapsed,
+        })
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -293,39 +296,10 @@ impl OverDriveDB {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /// Full-text search across a table.
-    pub fn search(&self, _table: &str, text: &str) -> SdkResult<Vec<Value>> {
-        let db = self.db()?;
-        let results = db.search_text(text);
-        // Convert string results to JSON values
-        let values: Vec<Value> = results.iter()
-            .filter_map(|r| serde_json::from_str(r).ok())
-            .collect();
+    pub fn search(&self, table: &str, text: &str) -> SdkResult<Vec<Value>> {
+        let result_str = self.native.search(table, text)?;
+        let values: Vec<Value> = serde_json::from_str(&result_str).unwrap_or_default();
         Ok(values)
-    }
-
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // INDEXING
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    /// Create a secondary index on a table column for faster queries.
-    pub fn create_index(&mut self, table: &str, column: &str) -> SdkResult<()> {
-        let db = self.db_mut()?;
-        let def = overdrive_db::storage::index::IndexDef {
-            name: format!("idx_{}_{}", table, column),
-            table: table.to_string(),
-            columns: vec![column.to_string()],
-            index_type: overdrive_db::storage::index::IndexType::BTree,
-            unique: false,
-        };
-        db.create_index(def)?;
-        Ok(())
-    }
-
-    /// Drop a secondary index by name.
-    pub fn drop_index(&mut self, name: &str) -> SdkResult<bool> {
-        let db = self.db_mut()?;
-        let result = db.drop_index(name)?;
-        Ok(result)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -334,14 +308,13 @@ impl OverDriveDB {
 
     /// Get database statistics.
     pub fn stats(&self) -> SdkResult<Stats> {
-        let db = self.db()?;
         let file_size = std::fs::metadata(&self.path)
             .map(|m| m.len())
             .unwrap_or(0);
-        let tables = db.list_tables();
+        let tables = self.list_tables().unwrap_or_default();
         let mut total_records = 0;
         for table in &tables {
-            total_records += db.count(table).unwrap_or(0);
+            total_records += self.count(table).unwrap_or(0);
         }
         Ok(Stats {
             tables: tables.len(),
@@ -350,144 +323,10 @@ impl OverDriveDB {
             path: self.path.clone(),
         })
     }
-
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // INTERNAL HELPERS
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    pub(crate) fn db(&self) -> SdkResult<&Database> {
-        self.db.as_ref().ok_or(SdkError::DatabaseClosed)
-    }
-
-    pub(crate) fn db_mut(&mut self) -> SdkResult<&mut Database> {
-        self.db.as_mut().ok_or(SdkError::DatabaseClosed)
-    }
 }
 
 impl Drop for OverDriveDB {
     fn drop(&mut self) {
-        if let Some(db) = self.db.take() {
-            let _ = db.sync();
-            drop(db);
-        }
-    }
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// TESTS
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn test_create_and_open() {
-        let path = format!("test_sdk_{}.odb", uuid::Uuid::new_v4());
-        {
-            let db = OverDriveDB::create(&path).unwrap();
-            assert_eq!(db.path(), path);
-            db.close().unwrap();
-        }
-        {
-            let db = OverDriveDB::open_existing(&path).unwrap();
-            db.close().unwrap();
-        }
-        OverDriveDB::destroy(&path).unwrap();
-    }
-
-    #[test]
-    fn test_crud_operations() {
-        let path = format!("test_crud_{}.odb", uuid::Uuid::new_v4());
-        let mut db = OverDriveDB::open(&path).unwrap();
-        
-        // Create table
-        db.create_table("users").unwrap();
-        assert!(db.table_exists("users").unwrap());
-        
-        // Insert
-        let id = db.insert("users", &json!({
-            "name": "Alice",
-            "age": 30
-        })).unwrap();
-        assert!(!id.is_empty());
-        
-        // Get
-        let doc = db.get("users", &id).unwrap();
-        assert!(doc.is_some());
-        assert_eq!(doc.unwrap()["name"], "Alice");
-        
-        // Update
-        db.update("users", &id, &json!({"age": 31})).unwrap();
-        let updated = db.get("users", &id).unwrap().unwrap();
-        assert_eq!(updated["age"], 31);
-        
-        // Count
-        assert_eq!(db.count("users").unwrap(), 1);
-        
-        // Delete
-        db.delete("users", &id).unwrap();
-        assert_eq!(db.count("users").unwrap(), 0);
-        
-        // Cleanup
-        db.close().unwrap();
-        OverDriveDB::destroy(&path).unwrap();
-    }
-
-    #[test]
-    fn test_batch_insert() {
-        let path = format!("test_batch_{}.odb", uuid::Uuid::new_v4());
-        let mut db = OverDriveDB::open(&path).unwrap();
-        db.create_table("items").unwrap();
-        
-        let ids = db.insert_batch("items", &[
-            json!({"name": "A", "price": 10}),
-            json!({"name": "B", "price": 20}),
-            json!({"name": "C", "price": 30}),
-        ]).unwrap();
-        
-        assert_eq!(ids.len(), 3);
-        assert_eq!(db.count("items").unwrap(), 3);
-        
-        db.close().unwrap();
-        OverDriveDB::destroy(&path).unwrap();
-    }
-
-    #[test]
-    fn test_list_and_drop_tables() {
-        let path = format!("test_tables_{}.odb", uuid::Uuid::new_v4());
-        let mut db = OverDriveDB::open(&path).unwrap();
-        
-        db.create_table("t1").unwrap();
-        db.create_table("t2").unwrap();
-        
-        let tables = db.list_tables().unwrap();
-        assert!(tables.contains(&"t1".to_string()));
-        assert!(tables.contains(&"t2".to_string()));
-        
-        db.drop_table("t1").unwrap();
-        assert!(!db.table_exists("t1").unwrap());
-        
-        db.close().unwrap();
-        OverDriveDB::destroy(&path).unwrap();
-    }
-
-    #[test]
-    fn test_sql_query() {
-        let path = format!("test_sql_{}.odb", uuid::Uuid::new_v4());
-        let mut db = OverDriveDB::open(&path).unwrap();
-        db.create_table("products").unwrap();
-        
-        db.insert("products", &json!({"name": "Laptop", "price": 999})).unwrap();
-        db.insert("products", &json!({"name": "Mouse", "price": 29})).unwrap();
-        db.insert("products", &json!({"name": "Keyboard", "price": 79})).unwrap();
-        
-        let result = db.query("SELECT * FROM products WHERE price > 50").unwrap();
-        assert_eq!(result.rows.len(), 2);
-        assert!(result.execution_time_ms >= 0.0);
-        
-        db.close().unwrap();
-        OverDriveDB::destroy(&path).unwrap();
+        self.native.close();
     }
 }

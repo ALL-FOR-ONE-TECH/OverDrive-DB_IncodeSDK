@@ -1,0 +1,90 @@
+# Publish SDK packages to PyPI and npm
+#
+# Triggered by the sdk-release workflow after binaries are uploaded,
+# or manually via workflow_dispatch.
+
+name: Publish SDK Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.0.1)'
+        required: true
+        default: '1.0.1'
+      publish_pypi:
+        description: 'Publish to PyPI'
+        type: boolean
+        default: true
+      publish_npm:
+        description: 'Publish to npm'
+        type: boolean
+        default: true
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Publish Python SDK to PyPI
+  # ─────────────────────────────────────────────
+  publish-pypi:
+    if: ${{ github.event.inputs.publish_pypi == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Update version
+        run: |
+          cd IncodeSDK/python
+          sed -i 's/version = ".*"/version = "${{ github.event.inputs.version }}"/' pyproject.toml
+
+      - name: Build package
+        run: |
+          cd IncodeSDK/python
+          python -m build
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          cd IncodeSDK/python
+          twine upload dist/*
+
+  # ─────────────────────────────────────────────
+  # Publish Node.js SDK to npm
+  # ─────────────────────────────────────────────
+  publish-npm:
+    if: ${{ github.event.inputs.publish_npm == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update version
+        run: |
+          cd IncodeSDK/nodejs
+          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+
+      - name: Copy LICENSE
+        run: cp IncodeSDK/LICENSE IncodeSDK/nodejs/LICENSE 2>/dev/null || true
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd IncodeSDK/nodejs
+          npm publish --access public

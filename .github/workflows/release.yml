@@ -1,0 +1,259 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # Windows build - primary target
+  build-windows:
+    name: Build Windows MSI
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-wix
+        run: cargo install cargo-wix
+      
+      - name: Build Release
+        run: cargo build --release
+      
+      - name: Verify Binaries
+        shell: pwsh
+        run: |
+          $binaries = "overdrive-serve.exe", "overdrive.exe", "overdrive-admin.exe"
+          foreach ($bin in $binaries) {
+            $path = "target/release/$bin"
+            if (Test-Path $path) {
+              Write-Host "[OK] Found $bin"
+            } else {
+              Write-Error "[FAIL] Missing $bin"
+              exit 1
+            }
+          }
+      
+      - name: Build MSI
+        run: cargo wix --no-build -v
+      
+      - name: Upload Unsigned MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi-unsigned
+          path: target/wix/*.msi
+
+      - name: Upload Windows Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries
+          path: |
+            target/release/overdrive.exe
+            target/release/overdrive-serve.exe
+            target/release/overdrive-admin.exe
+
+  # Linux build - continue on error
+  build-linux:
+    name: Build Linux Packages
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-gnu]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+      
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+      
+      - name: Build Release
+        run: cargo build --release --target ${{ matrix.target }}
+      
+      - name: Build Deb
+        run: cargo deb --no-build --verbose --target ${{ matrix.target }}
+      
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages-${{ matrix.target }}
+          path: target/${{ matrix.target }}/debian/*.deb
+
+  # macOS build - continue on error
+  build-macos:
+    name: Build MacOS
+    runs-on: macos-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Build Binary
+        run: cargo build --release --target ${{ matrix.target }}
+      
+      - name: Bundle PKG
+        run: |
+          chmod +x scripts/bundle-macos.sh
+          ./scripts/bundle-macos.sh ${{ matrix.target }}
+      
+      - name: Upload PKG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-pkg-${{ matrix.target }}
+          path: artifacts/*.pkg
+
+  # ═══════════════════════════════════════════════════════════════
+  # SignPath code signing — signs MSI + embedded EXEs
+  # Requires: SIGNPATH_API_TOKEN secret + SIGNPATH_ORGANIZATION_ID var
+  # Free for open-source at https://signpath.io
+  # ═══════════════════════════════════════════════════════════════
+  sign-windows:
+    name: Sign Windows MSI (SignPath)
+    needs: build-windows
+    runs-on: ubuntu-latest
+    if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+    steps:
+      - name: Download Unsigned MSI
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-msi-unsigned
+          path: ./unsigned
+      
+      - name: Submit to SignPath
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: overdrive-db
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: msi
+          github-artifact-id: windows-msi-unsigned
+          wait-for-completion: true
+          output-artifact-directory: ./signed
+      
+      - name: Upload Signed MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi-signed
+          path: ./signed/*.msi
+
+  # ═══════════════════════════════════════════════════════════════
+  # Create GitHub Release
+  # Prefers signed MSI if available, falls back to unsigned
+  # ═══════════════════════════════════════════════════════════════
+  release:
+    name: Create Release
+    needs: [build-windows]
+    runs-on: ubuntu-latest
+    if: always() && needs.build-windows.result == 'success'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Try to download signed MSI first
+      - name: Download Signed MSI
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-msi-signed
+          path: ./release/msi
+        continue-on-error: true
+        id: signed-msi
+
+      # Fall back to unsigned MSI if signing wasn't available
+      - name: Download Unsigned MSI (fallback)
+        if: steps.signed-msi.outcome != 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-msi-unsigned
+          path: ./release/msi
+
+      # Download other artifacts
+      - name: Download Windows Binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-binaries
+          path: ./release/bin
+        continue-on-error: true
+
+      - name: Download Linux Packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: linux-packages-*
+          path: ./release/linux
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Download macOS Packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macos-pkg-*
+          path: ./release/macos
+          merge-multiple: true
+        continue-on-error: true
+      
+      - name: Display Release Contents
+        run: find ./release -type f | sort
+
+      - name: Determine Signing Status
+        id: sign-status
+        run: |
+          if [ "${{ steps.signed-msi.outcome }}" == "success" ]; then
+            echo "signed=true" >> $GITHUB_OUTPUT
+            echo "badge=Signed with SignPath" >> $GITHUB_OUTPUT
+          else
+            echo "signed=false" >> $GITHUB_OUTPUT
+            echo "badge=Unsigned" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ./release/**/*.msi
+            ./release/**/*.exe
+            ./release/**/*.deb
+            ./release/**/*.pkg
+          body: |
+            ## OverDrive-DB ${{ github.ref_name }}
+            
+            **Code Signing:** ${{ steps.sign-status.outputs.badge }}
+            
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | Windows (Installer) | `overdrive-db-*-x86_64.msi` |
+            | Windows (Binaries) | `overdrive.exe`, `overdrive-serve.exe`, `overdrive-admin.exe` |
+            | Linux (.deb) | `overdrive-db_*_amd64.deb` |
+            | macOS | `overdrive-db-*.pkg` |
+            
+            ### Default Credentials
+            ```
+            User: admin
+            Pass: OverDrive@2024
+            ```
+            Change these after first login!
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
+          fail_on_unmatched_files: false

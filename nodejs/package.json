@@ -1,6 +1,6 @@
 {
     "name": "overdrive-db",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "description": "Embeddable document database — like SQLite for JSON",
     "main": "index.js",
     "types": "index.d.ts",
@@ -16,8 +16,7 @@
         "embedded",
         "nosql",
         "sqlite",
-        "overdrive",
-        "ffi"
+        "overdrive"
     ],
     "author": {
         "name": "ALL FOR ONE TECH",
@@ -46,8 +45,7 @@
         "arm64"
     ],
     "dependencies": {
-        "ffi-napi": "^4.0.3",
-        "ref-napi": "^3.0.3"
+        "koffi": "^2.9.0"
     },
     "files": [
         "index.js",

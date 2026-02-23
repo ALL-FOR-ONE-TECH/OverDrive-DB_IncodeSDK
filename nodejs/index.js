@@ -11,10 +11,10 @@
  *   db.close();
  */
 
-const ffi = require('ffi-napi');
-const ref = require('ref-napi');
+const koffi = require('koffi');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
 
 // Find the native library
 function findLibrary() {
@@ -32,47 +32,43 @@ function findLibrary() {
     ];
 
     for (const p of searchPaths) {
-        try {
-            require('fs').accessSync(p);
-            return p;
-        } catch { }
+        if (fs.existsSync(p)) return p;
     }
     return libName; // Fall back to system path
 }
 
-// Load native library
+// Load native library via koffi
 const libPath = findLibrary();
-const voidPtr = ref.refType(ref.types.void);
+const lib = koffi.load(libPath);
 
-const lib = ffi.Library(libPath, {
-    'overdrive_open': [voidPtr, ['string']],
-    'overdrive_close': ['void', [voidPtr]],
-    'overdrive_sync': ['void', [voidPtr]],
-    'overdrive_create_table': ['int', [voidPtr, 'string']],
-    'overdrive_drop_table': ['int', [voidPtr, 'string']],
-    'overdrive_list_tables': [voidPtr, [voidPtr]],
-    'overdrive_table_exists': ['int', [voidPtr, 'string']],
-    'overdrive_insert': [voidPtr, [voidPtr, 'string', 'string']],
-    'overdrive_get': [voidPtr, [voidPtr, 'string', 'string']],
-    'overdrive_update': ['int', [voidPtr, 'string', 'string', 'string']],
-    'overdrive_delete': ['int', [voidPtr, 'string', 'string']],
-    'overdrive_count': ['int', [voidPtr, 'string']],
-    'overdrive_query': [voidPtr, [voidPtr, 'string']],
-    'overdrive_search': [voidPtr, [voidPtr, 'string', 'string']],
-    'overdrive_last_error': ['string', []],
-    'overdrive_free_string': ['void', [voidPtr]],
-    'overdrive_version': ['string', []],
-});
+// Define FFI function signatures
+const overdrive_open = lib.func('void* overdrive_open(const char* path)');
+const overdrive_close = lib.func('void overdrive_close(void* db)');
+const overdrive_sync = lib.func('void overdrive_sync(void* db)');
+const overdrive_create_table = lib.func('int overdrive_create_table(void* db, const char* name)');
+const overdrive_drop_table = lib.func('int overdrive_drop_table(void* db, const char* name)');
+const overdrive_list_tables = lib.func('void* overdrive_list_tables(void* db)');
+const overdrive_table_exists = lib.func('int overdrive_table_exists(void* db, const char* name)');
+const overdrive_insert = lib.func('void* overdrive_insert(void* db, const char* table, const char* json_doc)');
+const overdrive_get = lib.func('void* overdrive_get(void* db, const char* table, const char* id)');
+const overdrive_update = lib.func('int overdrive_update(void* db, const char* table, const char* id, const char* json_updates)');
+const overdrive_delete = lib.func('int overdrive_delete(void* db, const char* table, const char* id)');
+const overdrive_count = lib.func('int overdrive_count(void* db, const char* table)');
+const overdrive_query = lib.func('void* overdrive_query(void* db, const char* sql)');
+const overdrive_search = lib.func('void* overdrive_search(void* db, const char* table, const char* text)');
+const overdrive_last_error = lib.func('const char* overdrive_last_error()');
+const overdrive_free_string = lib.func('void overdrive_free_string(void* s)');
+const overdrive_version = lib.func('const char* overdrive_version()');
 
 function readAndFree(ptr) {
-    if (ref.isNull(ptr)) return null;
-    const str = ptr.readCString();
-    lib.overdrive_free_string(ptr);
+    if (!ptr) return null;
+    const str = koffi.decode(ptr, 'char', -1);
+    overdrive_free_string(ptr);
     return str;
 }
 
 function checkError() {
-    const err = lib.overdrive_last_error();
+    const err = overdrive_last_error();
     if (err) throw new Error(`OverDrive: ${err}`);
 }
 
@@ -82,8 +78,8 @@ class OverDrive {
      * @param {string} dbPath - Path to the database file
      */
     constructor(dbPath) {
-        this._handle = lib.overdrive_open(dbPath);
-        if (ref.isNull(this._handle)) {
+        this._handle = overdrive_open(dbPath);
+        if (!this._handle) {
             checkError();
             throw new Error(`Failed to open database: ${dbPath}`);
         }
@@ -92,8 +88,8 @@ class OverDrive {
 
     /** Close the database. */
     close() {
-        if (this._handle && !ref.isNull(this._handle)) {
-            lib.overdrive_close(this._handle);
+        if (this._handle) {
+            overdrive_close(this._handle);
             this._handle = null;
         }
     }
@@ -101,34 +97,34 @@ class OverDrive {
     /** Sync data to disk. */
     sync() {
         this._ensureOpen();
-        lib.overdrive_sync(this._handle);
+        overdrive_sync(this._handle);
     }
 
     /** Get database file path. */
     get path() { return this._path; }
 
     /** Get SDK version. */
-    static version() { return lib.overdrive_version(); }
+    static version() { return overdrive_version(); }
 
     // ── Tables ─────────────────────────────────
 
     /** Create a table. */
     createTable(name) {
         this._ensureOpen();
-        if (lib.overdrive_create_table(this._handle, name) !== 0) checkError();
+        if (overdrive_create_table(this._handle, name) !== 0) checkError();
     }
 
     /** Drop a table. */
     dropTable(name) {
         this._ensureOpen();
-        if (lib.overdrive_drop_table(this._handle, name) !== 0) checkError();
+        if (overdrive_drop_table(this._handle, name) !== 0) checkError();
     }
 
     /** List all tables. */
     listTables() {
         this._ensureOpen();
-        const ptr = lib.overdrive_list_tables(this._handle);
-        if (ref.isNull(ptr)) { checkError(); return []; }
+        const ptr = overdrive_list_tables(this._handle);
+        if (!ptr) { checkError(); return []; }
         const result = readAndFree(ptr);
         return result ? JSON.parse(result) : [];
     }
@@ -136,7 +132,7 @@ class OverDrive {
     /** Check if table exists. */
     tableExists(name) {
         this._ensureOpen();
-        return lib.overdrive_table_exists(this._handle, name) === 1;
+        return overdrive_table_exists(this._handle, name) === 1;
     }
 
     // ── CRUD ───────────────────────────────────
@@ -149,8 +145,8 @@ class OverDrive {
      */
     insert(table, doc) {
         this._ensureOpen();
-        const ptr = lib.overdrive_insert(this._handle, table, JSON.stringify(doc));
-        if (ref.isNull(ptr)) { checkError(); throw new Error('Insert failed'); }
+        const ptr = overdrive_insert(this._handle, table, JSON.stringify(doc));
+        if (!ptr) { checkError(); throw new Error('Insert failed'); }
         return readAndFree(ptr);
     }
 
@@ -170,8 +166,8 @@ class OverDrive {
      */
     get(table, id) {
         this._ensureOpen();
-        const ptr = lib.overdrive_get(this._handle, table, id);
-        if (ref.isNull(ptr)) return null;
+        const ptr = overdrive_get(this._handle, table, id);
+        if (!ptr) return null;
         const result = readAndFree(ptr);
         return result ? JSON.parse(result) : null;
     }
@@ -182,7 +178,7 @@ class OverDrive {
      */
     update(table, id, updates) {
         this._ensureOpen();
-        const result = lib.overdrive_update(this._handle, table, id, JSON.stringify(updates));
+        const result = overdrive_update(this._handle, table, id, JSON.stringify(updates));
         if (result === -1) checkError();
         return result === 1;
     }
@@ -193,7 +189,7 @@ class OverDrive {
      */
     delete(table, id) {
         this._ensureOpen();
-        const result = lib.overdrive_delete(this._handle, table, id);
+        const result = overdrive_delete(this._handle, table, id);
         if (result === -1) checkError();
         return result === 1;
     }
@@ -204,7 +200,7 @@ class OverDrive {
      */
     count(table) {
         this._ensureOpen();
-        const result = lib.overdrive_count(this._handle, table);
+        const result = overdrive_count(this._handle, table);
         if (result === -1) checkError();
         return Math.max(0, result);
     }
@@ -218,8 +214,8 @@ class OverDrive {
      */
     query(sql) {
         this._ensureOpen();
-        const ptr = lib.overdrive_query(this._handle, sql);
-        if (ref.isNull(ptr)) { checkError(); return []; }
+        const ptr = overdrive_query(this._handle, sql);
+        if (!ptr) { checkError(); return []; }
         const result = readAndFree(ptr);
         if (!result) return [];
         const parsed = JSON.parse(result);
@@ -232,8 +228,8 @@ class OverDrive {
      */
     queryFull(sql) {
         this._ensureOpen();
-        const ptr = lib.overdrive_query(this._handle, sql);
-        if (ref.isNull(ptr)) { checkError(); return { rows: [], columns: [], rows_affected: 0 }; }
+        const ptr = overdrive_query(this._handle, sql);
+        if (!ptr) { checkError(); return { rows: [], columns: [], rows_affected: 0 }; }
         const result = readAndFree(ptr);
         return result ? JSON.parse(result) : {};
     }
@@ -244,8 +240,8 @@ class OverDrive {
      */
     search(table, text) {
         this._ensureOpen();
-        const ptr = lib.overdrive_search(this._handle, table, text);
-        if (ref.isNull(ptr)) return [];
+        const ptr = overdrive_search(this._handle, table, text);
+        if (!ptr) return [];
         const result = readAndFree(ptr);
         return result ? JSON.parse(result) : [];
     }
@@ -253,7 +249,7 @@ class OverDrive {
     // ── Internal ───────────────────────────────
 
     _ensureOpen() {
-        if (!this._handle || ref.isNull(this._handle)) {
+        if (!this._handle) {
             throw new Error('Database is closed');
         }
     }

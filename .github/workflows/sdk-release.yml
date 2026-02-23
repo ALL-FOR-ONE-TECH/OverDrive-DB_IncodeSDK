@@ -1,0 +1,170 @@
+# Build & Release — OverDrive InCode SDK
+#
+# Runs on the PRIVATE repo (karthikeyanV2K/OverDrive-DB)
+# Builds native libraries for Windows, Linux, macOS
+# Uploads compiled binaries to the PUBLIC repo (ALL-FOR-ONE-TECH/OverDrive-DB_SDK)
+#
+# Source code NEVER leaves this repo — only compiled binaries are published.
+#
+# Trigger: Push a tag like v1.0.0, v1.1.0, etc.
+
+name: Build & Release SDK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+env:
+  SDK_REPO: ALL-FOR-ONE-TECH/OverDrive-DB_SDK
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Build native libraries on all 3 platforms
+  # ─────────────────────────────────────────────
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: overdrive.dll
+            asset_name: overdrive-windows-x64.dll
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: liboverdrive.so
+            asset_name: liboverdrive-linux-x64.so
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: liboverdrive.dylib
+            asset_name: liboverdrive-macos-arm64.dylib
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout source (private repo)
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release (IncodeSDK)
+        working-directory: IncodeSDK
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Copy artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "IncodeSDK/target/${{ matrix.target }}/release/${{ matrix.artifact }}" "dist/${{ matrix.asset_name }}"
+          else
+            cp "IncodeSDK/target/${{ matrix.target }}/release/${{ matrix.artifact }}" "dist/${{ matrix.asset_name }}"
+          fi
+          ls -la dist/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/${{ matrix.asset_name }}
+
+  # ─────────────────────────────────────────────
+  # Create release on the PUBLIC SDK repo
+  # ─────────────────────────────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Flatten artifacts into dist/
+        run: |
+          mkdir -p dist
+          find artifacts/ -type f | while read f; do
+            cp "$f" dist/
+          done
+          echo "=== dist/ contents ==="
+          ls -la dist/
+
+      - name: Create checksums
+        run: |
+          cd dist
+          for f in *.dll *.so *.dylib; do
+            [ -f "$f" ] && sha256sum "$f" >> checksums-sha256.txt
+          done
+          echo "=== Checksums ==="
+          cat checksums-sha256.txt
+
+      - name: Create Release on SDK repo
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: ${{ env.SDK_REPO }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "${{ steps.version.outputs.tag }} — OverDrive InCode SDK"
+          body: |
+            ## OverDrive InCode SDK ${{ steps.version.outputs.tag }}
+            
+            **Embeddable document database — like SQLite for JSON.**
+            
+            ### 📦 Downloads
+            
+            | File | Platform | Architecture |
+            |---|---|---|
+            | `overdrive-windows-x64.dll` | Windows | x86_64 |
+            | `liboverdrive-linux-x64.so` | Linux | x86_64 |
+            | `liboverdrive-macos-arm64.dylib` | macOS | ARM64 (Apple Silicon) |
+            
+            ### 🚀 Quick Start
+            
+            1. Download the binary for your platform
+            2. Place it next to your application
+            3. Use the SDK wrapper ([Rust](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/quickstart.md), [Python](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/python-guide.md), [Node.js](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/nodejs-guide.md), [C/C++](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/c-guide.md))
+            
+            ### 🔐 Checksums (SHA-256)
+            See `checksums-sha256.txt` attached below.
+            
+            ### 📖 Documentation
+            - [Quick Start Guide](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/quickstart.md)
+            - [API Reference](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/api-reference.md)
+            - [SQL Guide](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/sql-guide.md)
+          files: |
+            dist/overdrive-windows-x64.dll
+            dist/liboverdrive-linux-x64.so
+            dist/liboverdrive-macos-arm64.dylib
+            dist/checksums-sha256.txt
+          token: ${{ secrets.SDK_RELEASE_TOKEN }}
+          draft: false
+          prerelease: false
