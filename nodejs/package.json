@@ -1,7 +1,7 @@
 {
     "name": "overdrive-db",
-    "version": "1.1.0",
-    "description": "Embeddable document database — like SQLite for JSON",
+    "version": "1.2.0",
+    "description": "OverDrive-DB — High-performance embeddable hybrid SQL+NoSQL document database. A serverless, ACID-compliant alternative to SQLite for JSON data.",
     "main": "index.js",
     "types": "index.d.ts",
     "scripts": {
@@ -9,14 +9,24 @@
         "test": "node test/basic.js"
     },
     "keywords": [
+        "overdrive-db",
+        "overdrivedb",
+        "afot",
+        "all-for-one-tech",
         "database",
-        "document",
-        "json",
+        "document-database",
+        "json-database",
         "sql",
-        "embedded",
         "nosql",
-        "sqlite",
-        "overdrive"
+        "embedded-database",
+        "sqlite-alternative",
+        "mvcc",
+        "btree",
+        "full-text-search",
+        "rust",
+        "acid",
+        "fast",
+        "serverless-db"
     ],
     "author": {
         "name": "ALL FOR ONE TECH",

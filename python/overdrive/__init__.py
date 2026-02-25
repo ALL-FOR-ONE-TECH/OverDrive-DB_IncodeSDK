@@ -110,6 +110,23 @@ class _Native:
         self.lib.overdrive_version.argtypes = []
         self.lib.overdrive_version.restype = ctypes.c_char_p
 
+        # Phase 5: MVCC Transactions
+        self.lib.overdrive_begin_transaction.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self.lib.overdrive_begin_transaction.restype = ctypes.c_uint64
+
+        self.lib.overdrive_commit_transaction.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+        self.lib.overdrive_commit_transaction.restype = ctypes.c_int
+
+        self.lib.overdrive_abort_transaction.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+        self.lib.overdrive_abort_transaction.restype = ctypes.c_int
+
+        # Phase 5: Integrity & Stats
+        self.lib.overdrive_verify_integrity.argtypes = [ctypes.c_void_p]
+        self.lib.overdrive_verify_integrity.restype = ctypes.c_void_p
+
+        self.lib.overdrive_stats.argtypes = [ctypes.c_void_p]
+        self.lib.overdrive_stats.restype = ctypes.c_void_p
+
 
 _native = None
 
@@ -346,3 +363,86 @@ class OverDrive:
     def _ensure_open(self):
         if not self._handle:
             raise OverDriveError("Database is closed")
+
+    # ── MVCC Transactions (Phase 5) ────────────
+
+    READ_UNCOMMITTED = 0
+    READ_COMMITTED = 1
+    REPEATABLE_READ = 2
+    SERIALIZABLE = 3
+
+    def begin_transaction(self, isolation: int = 1) -> int:
+        """Begin a new MVCC transaction. Returns transaction ID."""
+        self._ensure_open()
+        txn_id = self._native.lib.overdrive_begin_transaction(self._handle, isolation)
+        if txn_id == 0:
+            _check_error(self._native)
+            raise OverDriveError("Failed to begin transaction")
+        return txn_id
+
+    def commit_transaction(self, txn_id: int):
+        """Commit a transaction."""
+        self._ensure_open()
+        result = self._native.lib.overdrive_commit_transaction(self._handle, txn_id)
+        if result != 0:
+            _check_error(self._native)
+
+    def abort_transaction(self, txn_id: int):
+        """Abort (rollback) a transaction."""
+        self._ensure_open()
+        result = self._native.lib.overdrive_abort_transaction(self._handle, txn_id)
+        if result != 0:
+            _check_error(self._native)
+
+    class _TransactionCtx:
+        """Context manager for MVCC transactions."""
+        def __init__(self, db, isolation):
+            self.db = db
+            self.isolation = isolation
+            self.txn_id = None
+
+        def __enter__(self):
+            self.txn_id = self.db.begin_transaction(self.isolation)
+            return self.txn_id
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            if exc_type is not None:
+                self.db.abort_transaction(self.txn_id)
+            else:
+                self.db.commit_transaction(self.txn_id)
+            return False
+
+    def transaction(self, isolation: int = 1):
+        """
+        Context manager for MVCC transactions.
+
+        Usage:
+            with db.transaction() as txn_id:
+                db.insert("users", {"name": "Alice"})
+                # auto-commits on success, auto-aborts on exception
+        """
+        return self._TransactionCtx(self, isolation)
+
+    # ── Integrity Verification (Phase 5) ───────
+
+    def verify_integrity(self) -> Dict[str, Any]:
+        """Verify database integrity. Returns a report dict."""
+        self._ensure_open()
+        ptr = self._native.lib.overdrive_verify_integrity(self._handle)
+        if not ptr:
+            _check_error(self._native)
+            return {"valid": False, "issues": ["verification failed"]}
+        result = _read_and_free(self._native, ptr)
+        return json.loads(result) if result else {}
+
+    # ── Extended Stats (Phase 5) ───────────────
+
+    def stats(self) -> Dict[str, Any]:
+        """Get extended database statistics including MVCC info."""
+        self._ensure_open()
+        ptr = self._native.lib.overdrive_stats(self._handle)
+        if not ptr:
+            _check_error(self._native)
+            return {}
+        result = _read_and_free(self._native, ptr)
+        return json.loads(result) if result else {}

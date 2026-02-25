@@ -1,7 +1,7 @@
 <p align="center">
-  <h1 align="center">⚡ OverDrive InCode SDK</h1>
+  <h1 align="center">⚡ OverDrive-DB — InCode SDK</h1>
   <p align="center">
-    <strong>Embeddable document database — like SQLite for JSON.</strong><br/>
+    <strong>A high-performance, embeddable hybrid SQL+NoSQL document database. Like SQLite, but for JSON.</strong><br/>
     Import the package. Open a file. Query your data. <em>No server needed.</em>
   </p>
   <p align="center">

@@ -302,5 +302,100 @@ pub unsafe extern "C" fn overdrive_free_string(ptr: *mut c_char) {
 #[no_mangle]
 pub extern "C" fn overdrive_version() -> *const c_char {
     // Static string, no need to free
-    b"1.0.0\0".as_ptr() as *const c_char
+    b"1.2.0\0".as_ptr() as *const c_char
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MVCC TRANSACTIONS (Phase 5)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Begin a transaction. isolation_level: 0=ReadUncommitted, 1=ReadCommitted, 2=RepeatableRead, 3=Serializable.
+/// Returns a transaction ID (>0) on success, 0 on error.
+#[no_mangle]
+pub unsafe extern "C" fn overdrive_begin_transaction(db: *mut ODB, isolation_level: i32) -> u64 {
+    clear_error();
+    if db.is_null() { set_error("Null db handle".into()); return 0; }
+    let isolation = crate::IsolationLevel::from_i32(isolation_level);
+    match (*db).inner.begin_transaction(isolation) {
+        Ok(txn) => txn.txn_id,
+        Err(e) => { set_error(e.to_string()); 0 }
+    }
+}
+
+/// Commit a transaction. Returns 0 on success, -1 on error.
+#[no_mangle]
+pub unsafe extern "C" fn overdrive_commit_transaction(db: *mut ODB, txn_id: u64) -> i32 {
+    clear_error();
+    if db.is_null() { set_error("Null db handle".into()); return -1; }
+    let txn = crate::TransactionHandle {
+        txn_id,
+        isolation: crate::IsolationLevel::ReadCommitted,
+        active: true,
+    };
+    match (*db).inner.commit_transaction(&txn) {
+        Ok(()) => 0,
+        Err(e) => { set_error(e.to_string()); -1 }
+    }
+}
+
+/// Abort (rollback) a transaction. Returns 0 on success, -1 on error.
+#[no_mangle]
+pub unsafe extern "C" fn overdrive_abort_transaction(db: *mut ODB, txn_id: u64) -> i32 {
+    clear_error();
+    if db.is_null() { set_error("Null db handle".into()); return -1; }
+    let txn = crate::TransactionHandle {
+        txn_id,
+        isolation: crate::IsolationLevel::ReadCommitted,
+        active: true,
+    };
+    match (*db).inner.abort_transaction(&txn) {
+        Ok(()) => 0,
+        Err(e) => { set_error(e.to_string()); -1 }
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// INTEGRITY VERIFICATION (Phase 5)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Verify database integrity. Returns JSON report string. Must be freed.
+#[no_mangle]
+pub unsafe extern "C" fn overdrive_verify_integrity(db: *mut ODB) -> *mut c_char {
+    clear_error();
+    if db.is_null() { set_error("Null db handle".into()); return ptr::null_mut(); }
+    match (*db).inner.verify_integrity() {
+        Ok(report) => {
+            let json = serde_json::json!({
+                "valid": report.is_valid,
+                "pages_checked": report.pages_checked,
+                "tables_verified": report.tables_verified,
+                "issues": report.issues,
+            });
+            to_c_string(&json.to_string())
+        }
+        Err(e) => { set_error(e.to_string()); ptr::null_mut() }
+    }
+}
+
+/// Get extended database stats. Returns JSON string. Must be freed.
+#[no_mangle]
+pub unsafe extern "C" fn overdrive_stats(db: *mut ODB) -> *mut c_char {
+    clear_error();
+    if db.is_null() { set_error("Null db handle".into()); return ptr::null_mut(); }
+    match (*db).inner.stats() {
+        Ok(stats) => {
+            let json = serde_json::json!({
+                "tables": stats.tables,
+                "total_records": stats.total_records,
+                "file_size_bytes": stats.file_size_bytes,
+                "path": stats.path,
+                "mvcc_active_versions": stats.mvcc_active_versions,
+                "page_size": stats.page_size,
+                "sdk_version": stats.sdk_version,
+            });
+            to_c_string(&json.to_string())
+        }
+        Err(e) => { set_error(e.to_string()); ptr::null_mut() }
+    }
+}
+

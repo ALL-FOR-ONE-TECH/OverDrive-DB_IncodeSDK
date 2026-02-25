@@ -1,8 +1,8 @@
-# OverDrive InCode SDK — Node.js
+# OverDrive-DB — Node.js SDK
 
-**Embeddable document database — like SQLite for JSON.**
+**A high-performance, embeddable hybrid SQL+NoSQL document database — built for speed and version control. Like SQLite, but for JSON.**
 
-Import the package. Open a file. Query your data. *No server needed.*
+Use OverDrive-DB in your Node.js applications whenever you need a fast, serverless database that supports both document queries and relational SQL.
 
 ## Install
 

@@ -40,6 +40,15 @@ extern char*  overdrive_search(ODB db, const char* table, const char* text);
 extern const char* overdrive_last_error();
 extern void   overdrive_free_string(char* s);
 extern const char* overdrive_version();
+
+// Phase 5: MVCC Transactions
+extern unsigned long long overdrive_begin_transaction(ODB db, int isolation_level);
+extern int    overdrive_commit_transaction(ODB db, unsigned long long txn_id);
+extern int    overdrive_abort_transaction(ODB db, unsigned long long txn_id);
+
+// Phase 5: Integrity & Stats
+extern char*  overdrive_verify_integrity(ODB db);
+extern char*  overdrive_stats(ODB db);
 */
 import "C"
 
@@ -293,3 +302,105 @@ func (db *DB) Search(table, text string) ([]map[string]any, error) {
 	}
 	return results, nil
 }
+
+// ── MVCC Transactions (Phase 5) ────────────────
+
+// IsolationLevel represents the MVCC isolation level for a transaction.
+type IsolationLevel int
+
+const (
+	ReadUncommitted IsolationLevel = 0
+	ReadCommitted   IsolationLevel = 1
+	RepeatableRead  IsolationLevel = 2
+	Serializable    IsolationLevel = 3
+)
+
+// TransactionHandle represents an active MVCC transaction.
+type TransactionHandle struct {
+	TxnID     uint64
+	Isolation IsolationLevel
+	Active    bool
+}
+
+// BeginTransaction starts a new MVCC transaction.
+func (db *DB) BeginTransaction(isolation IsolationLevel) (*TransactionHandle, error) {
+	txnID := C.overdrive_begin_transaction(db.handle, C.int(isolation))
+	if txnID == 0 {
+		return nil, lastError()
+	}
+	return &TransactionHandle{
+		TxnID:     uint64(txnID),
+		Isolation: isolation,
+		Active:    true,
+	}, nil
+}
+
+// CommitTransaction commits a transaction, making all changes permanent.
+func (db *DB) CommitTransaction(txn *TransactionHandle) error {
+	if C.overdrive_commit_transaction(db.handle, C.ulonglong(txn.TxnID)) != 0 {
+		return lastError()
+	}
+	txn.Active = false
+	return nil
+}
+
+// AbortTransaction aborts a transaction, discarding all changes.
+func (db *DB) AbortTransaction(txn *TransactionHandle) error {
+	if C.overdrive_abort_transaction(db.handle, C.ulonglong(txn.TxnID)) != 0 {
+		return lastError()
+	}
+	txn.Active = false
+	return nil
+}
+
+// ── Integrity Verification (Phase 5) ───────────
+
+// IntegrityReport holds the result of an integrity check.
+type IntegrityReport struct {
+	IsValid        bool     `json:"valid"`
+	PagesChecked   int      `json:"pages_checked"`
+	TablesVerified int      `json:"tables_verified"`
+	Issues         []string `json:"issues"`
+}
+
+// VerifyIntegrity checks the database for corruption or inconsistencies.
+func (db *DB) VerifyIntegrity() (*IntegrityReport, error) {
+	ptr := C.overdrive_verify_integrity(db.handle)
+	if ptr == nil {
+		return nil, lastError()
+	}
+	s := readAndFree(ptr)
+	var report IntegrityReport
+	if err := json.Unmarshal([]byte(s), &report); err != nil {
+		return nil, err
+	}
+	return &report, nil
+}
+
+// ── Extended Stats (Phase 5) ───────────────────
+
+// StatsResult holds detailed database statistics.
+type StatsResult struct {
+	Tables             int     `json:"tables"`
+	TotalRecords       int     `json:"total_records"`
+	FileSizeBytes      uint64  `json:"file_size_bytes"`
+	Path               string  `json:"path"`
+	MvccActiveVersions int     `json:"mvcc_active_versions"`
+	PageSize           int     `json:"page_size"`
+	SdkVersion         string  `json:"sdk_version"`
+}
+
+// Stats returns detailed database statistics including MVCC info.
+func (db *DB) Stats() (*StatsResult, error) {
+	ptr := C.overdrive_stats(db.handle)
+	if ptr == nil {
+		return nil, lastError()
+	}
+	s := readAndFree(ptr)
+	var stats StatsResult
+	if err := json.Unmarshal([]byte(s), &stats); err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}
+

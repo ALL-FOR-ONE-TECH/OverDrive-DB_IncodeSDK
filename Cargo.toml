@@ -1,6 +1,6 @@
 [package]
 name = "overdrive-db"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 authors = ["AFOT <admin@afot.in>"]
 description = "OverDrive-DB — Embeddable hybrid SQL+NoSQL database. Like SQLite for JSON. #OverDriveDB #AFOT"
@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK"
 homepage = "https://overdrive-db.com"
 readme = "README.md"
-keywords = ["database", "embedded", "json", "nosql", "sql"]
+keywords = ["database", "embedded", "overdrivedb", "nosql", "sql"]
 categories = ["database-implementations"]
 exclude = [
     "java/",

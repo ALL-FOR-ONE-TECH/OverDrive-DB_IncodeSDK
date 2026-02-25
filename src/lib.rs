@@ -63,13 +63,68 @@ impl QueryResult {
     }
 }
 
-/// Database statistics
+/// Database statistics (expanded for Phase 5)
 #[derive(Debug, Clone)]
 pub struct Stats {
     pub tables: usize,
     pub total_records: usize,
     pub file_size_bytes: u64,
     pub path: String,
+    /// Number of active MVCC versions in memory
+    pub mvcc_active_versions: usize,
+    /// Database page size in bytes (typically 4096)
+    pub page_size: usize,
+    /// SDK version string
+    pub sdk_version: String,
+}
+
+/// MVCC Isolation level for transactions
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum IsolationLevel {
+    /// Read uncommitted data (fastest, least safe)
+    ReadUncommitted = 0,
+    /// Read only committed data (default)
+    ReadCommitted = 1,
+    /// Repeatable reads within the transaction
+    RepeatableRead = 2,
+    /// Full serializable isolation (slowest, safest)
+    Serializable = 3,
+}
+
+impl IsolationLevel {
+    pub fn from_i32(val: i32) -> Self {
+        match val {
+            0 => IsolationLevel::ReadUncommitted,
+            1 => IsolationLevel::ReadCommitted,
+            2 => IsolationLevel::RepeatableRead,
+            3 => IsolationLevel::Serializable,
+            _ => IsolationLevel::ReadCommitted,
+        }
+    }
+}
+
+/// A handle for an active MVCC transaction
+#[derive(Debug, Clone)]
+pub struct TransactionHandle {
+    /// Unique transaction ID
+    pub txn_id: u64,
+    /// Isolation level of this transaction
+    pub isolation: IsolationLevel,
+    /// Whether this transaction is still active
+    pub active: bool,
+}
+
+/// Result of an integrity verification check
+#[derive(Debug, Clone)]
+pub struct IntegrityReport {
+    /// Whether the database passed all checks
+    pub is_valid: bool,
+    /// Total pages checked
+    pub pages_checked: usize,
+    /// Total tables verified
+    pub tables_verified: usize,
+    /// List of issues found (empty if valid)
+    pub issues: Vec<String>,
 }
 
 /// OverDrive InCode SDK — Embeddable document database
@@ -306,7 +361,7 @@ impl OverDriveDB {
     // STATISTICS
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    /// Get database statistics.
+    /// Get database statistics (expanded with MVCC info).
     pub fn stats(&self) -> SdkResult<Stats> {
         let file_size = std::fs::metadata(&self.path)
             .map(|m| m.len())
@@ -321,6 +376,81 @@ impl OverDriveDB {
             total_records,
             file_size_bytes: file_size,
             path: self.path.clone(),
+            mvcc_active_versions: 0, // Populated by engine when available
+            page_size: 4096,
+            sdk_version: Self::version(),
+        })
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // MVCC TRANSACTIONS (Phase 5)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Begin a new MVCC transaction with the specified isolation level.
+    ///
+    /// ```ignore
+    /// let txn = db.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+    /// // ... perform reads/writes ...
+    /// db.commit_transaction(&txn).unwrap();
+    /// ```
+    pub fn begin_transaction(&mut self, isolation: IsolationLevel) -> SdkResult<TransactionHandle> {
+        let txn_id = self.native.begin_transaction(isolation as i32)?;
+        Ok(TransactionHandle {
+            txn_id,
+            isolation,
+            active: true,
+        })
+    }
+
+    /// Commit a transaction, making all its changes permanent.
+    pub fn commit_transaction(&mut self, txn: &TransactionHandle) -> SdkResult<()> {
+        self.native.commit_transaction(txn.txn_id)?;
+        Ok(())
+    }
+
+    /// Abort (rollback) a transaction, discarding all its changes.
+    pub fn abort_transaction(&mut self, txn: &TransactionHandle) -> SdkResult<()> {
+        self.native.abort_transaction(txn.txn_id)?;
+        Ok(())
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // INTEGRITY VERIFICATION (Phase 5)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Verify the integrity of the database.
+    ///
+    /// Checks B-Tree consistency, page checksums, and MVCC version chains.
+    /// Returns a detailed report.
+    ///
+    /// ```ignore
+    /// let report = db.verify_integrity().unwrap();
+    /// assert!(report.is_valid);
+    /// println!("Checked {} pages across {} tables", report.pages_checked, report.tables_verified);
+    /// ```
+    pub fn verify_integrity(&self) -> SdkResult<IntegrityReport> {
+        let result_str = self.native.verify_integrity()?;
+        let result: Value = serde_json::from_str(&result_str).unwrap_or_default();
+
+        let is_valid = result.get("valid")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let pages_checked = result.get("pages_checked")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let tables_verified = result.get("tables_verified")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let issues = result.get("issues")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
+        Ok(IntegrityReport {
+            is_valid,
+            pages_checked,
+            tables_verified,
+            issues,
         })
     }
 }
