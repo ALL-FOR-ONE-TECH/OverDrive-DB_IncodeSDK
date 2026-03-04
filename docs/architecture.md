@@ -154,3 +154,68 @@ The `.odb` database file uses a page-based layout:
 | WHERE filter | O(n) | Full scan + filter |
 | WHERE with index | O(log n) | Index lookup |
 | COUNT | O(n) or O(1) | Depends on implementation |
+
+---
+
+## Security Model
+
+OverDrive SDK v1.3.0 implements 7 threat mitigations. Here's what is protected and how.
+
+### Threat Level Map
+
+| Level | Threat | Mitigation | API |
+|---|---|---|---|
+| 🔴 CRITICAL | File theft (copy `.odb`) | AES-256-GCM at-rest encryption | Built-in engine |
+| 🔴 CRITICAL | Key hardcoded in source | `SecretKey::from_env()` + `open_encrypted()` | `OverDriveDB::open_encrypted(path, "ENV_VAR")` |
+| 🔴 CRITICAL | Memory dump of key bytes | `SecretKey` zeroed on drop (`zeroize` crate) | `SecretKey::from_env()` |
+| 🔴 CRITICAL | Ransomware / file deletion | Encrypted backup API | `db.backup("dest.odb")` |
+| 🟠 HIGH | SQL injection from user input | `query_safe()` parameterized queries | `db.query_safe("SELECT * WHERE name = ?", &[user_input])` |
+| 🟠 HIGH | Race condition (multi-thread) | `SharedDB` Arc+Mutex wrapper | `SharedDB::open(path)` |
+| 🟡 MEDIUM | Unauthorized file access | Auto `chmod 600` / Windows ACL on open | Automatic on `OverDriveDB::open()` |
+| 🟡 MEDIUM | Stale WAL replay | `cleanup_wal()` after commit | `db.cleanup_wal()` |
+
+### API Quick Reference
+
+```rust
+use overdrive::{OverDriveDB, IsolationLevel, SecretKey};
+use overdrive::shared::SharedDB;
+
+// ── CRITICAL: Open with key from env (never hardcode!) ──
+// $env:ODB_KEY="my-aes-256-key-32-chars-minimum!"
+let mut db = OverDriveDB::open_encrypted("app.odb", "ODB_KEY")?;
+// SecretKey is zeroed from RAM on drop automatically
+
+// ── CRITICAL: Encrypted backup ──
+db.backup("offsite/app_backup.odb")?;
+
+// ── HIGH: SQL injection safe query ──
+let user_input = get_user_input(); // untrusted
+let result = db.query_safe(
+    "SELECT * FROM users WHERE name = ?",
+    &[user_input],
+)?; // SecurityError if injection detected
+
+// ── HIGH: Multi-thread safe access ──
+let shared = SharedDB::open("app.odb")?;
+let db2 = shared.clone();
+std::thread::spawn(move || db2.query("SELECT * FROM users").unwrap());
+
+// ── MEDIUM: WAL cleanup after commit ──
+let txn = db.begin_transaction(IsolationLevel::ReadCommitted)?;
+// ... writes ...
+db.commit_transaction(&txn)?;
+db.cleanup_wal()?; // Delete stale WAL — prevents replay attack
+
+// ── Auto on all opens: file permissions hardened ──
+// Windows: icacls grants only current user Full Control
+// Linux:   chmod 600 (owner read/write only)
+```
+
+### What Is NOT Protected (Your Responsibility)
+
+| Responsibility | Action Required |
+|---|---|
+| Key storage location | Use OS keychain / secrets manager, not `.env` files in git |
+| Backup encryption at destination | Store on encrypted volume or cloud with server-side encryption |
+| Network transport | Not applicable (embedded, no network). If you expose via REST, add TLS |
+

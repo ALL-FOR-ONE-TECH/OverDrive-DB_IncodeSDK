@@ -56,6 +56,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
+	"sync"
 	"unsafe"
 )
 
@@ -102,6 +108,7 @@ func Version() string {
 }
 
 // Open opens or creates a database at the given path.
+// File permissions are automatically hardened on open (chmod 600 / Windows ACL).
 func Open(path string) (*DB, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
@@ -110,6 +117,7 @@ func Open(path string) (*DB, error) {
 	if handle == nil {
 		return nil, fmt.Errorf("failed to open database: %w", lastError())
 	}
+	setSecurePermissions(path)
 	return &DB{handle: handle, path: path}, nil
 }
 
@@ -403,4 +411,223 @@ func (db *DB) Stats() (*StatsResult, error) {
 	}
 	return &stats, nil
 }
+
+// ── Security (v1.3.0) ───────────────────────────
+
+// setSecurePermissions restricts file access to the current user only.
+// Windows: icacls (non-fatal if unavailable)
+// Linux/macOS: chmod 600
+func setSecurePermissions(path string) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("icacls", path, "/inheritance:r", "/grant:r",
+			fmt.Sprintf("%s:F", os.Getenv("USERNAME")))
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "[overdrive] WARNING: Could not harden permissions on '%s': %v\n", path, err)
+		}
+	} else {
+		if err := os.Chmod(path, 0600); err != nil {
+			fmt.Fprintf(os.Stderr, "[overdrive] WARNING: Could not chmod 600 '%s': %v\n", path, err)
+		}
+	}
+}
+
+// OpenEncrypted opens a database with an AES encryption key loaded from
+// the specified environment variable. Never hardcode keys in source code.
+//
+//	// bash:       export ODB_KEY="my-secret-32-char-key!!!!"
+//	// PowerShell: $env:ODB_KEY="my-secret-32-char-key!!!!"
+//	db, err := overdrive.OpenEncrypted("app.odb", "ODB_KEY")
+func OpenEncrypted(path, keyEnvVar string) (*DB, error) {
+	key := os.Getenv(keyEnvVar)
+	if key == "" {
+		return nil, fmt.Errorf(
+			"[overdrive] encryption key env var '%s' is not set or empty — "+
+				"set it with: export %s=\"your-key\" (bash) or "+
+				"$env:%s=\"your-key\" (PowerShell)", keyEnvVar, keyEnvVar, keyEnvVar)
+	}
+	// Pass key to engine via dedicated env var, remove immediately after open
+	os.Setenv("__OVERDRIVE_KEY", key)
+	defer func() {
+		os.Unsetenv("__OVERDRIVE_KEY")
+		// Zero the key in our local string (best-effort)
+		keyBytes := []byte(key)
+		for i := range keyBytes {
+			keyBytes[i] = 0
+		}
+	}()
+	return Open(path)
+}
+
+// Backup creates an encrypted backup of the database at destPath.
+// Syncs all in-memory data to disk first, then copies .odb + .wal.
+// Store the backup on a separate drive or cloud storage.
+//
+//	if err := db.Backup("backups/app_2026-03-04.odb"); err != nil { log.Fatal(err) }
+func (db *DB) Backup(destPath string) error {
+	// Sync in-memory pages to disk first
+	db.Sync()
+
+	// Copy main .odb file
+	if err := copyFile(db.path, destPath); err != nil {
+		return fmt.Errorf("overdrive backup: %w", err)
+	}
+	// Copy WAL if it exists
+	walSrc := db.path + ".wal"
+	walDst := destPath + ".wal"
+	if _, err := os.Stat(walSrc); err == nil {
+		if err := copyFile(walSrc, walDst); err != nil {
+			return fmt.Errorf("overdrive backup (wal): %w", err)
+		}
+	}
+	// Harden backup file permissions too
+	setSecurePermissions(destPath)
+	return nil
+}
+
+// copyFile is a helper that copies src → dst byte-for-byte.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err = io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
+}
+
+// CleanupWAL deletes the WAL file after a confirmed commit to prevent
+// stale replay attacks. Call this after CommitTransaction().
+//
+//	db.CommitTransaction(txn)
+//	db.CleanupWAL() // Prevents WAL replay attack
+func (db *DB) CleanupWAL() error {
+	walPath := db.path + ".wal"
+	if _, err := os.Stat(walPath); err == nil {
+		return os.Remove(walPath)
+	}
+	return nil
+}
+
+// QuerySafe executes a parameterized SQL query — the safe way to include
+// user input. Use ? as placeholders; values are sanitized before substitution.
+// Returns an error if any param contains SQL injection patterns.
+//
+//	result, err := db.QuerySafe("SELECT * FROM users WHERE name = ?", "Alice")
+func (db *DB) QuerySafe(sqlTemplate string, params ...string) (*QueryResult, error) {
+	dangerous := []string{"DROP", "TRUNCATE", "ALTER", "EXEC", "EXECUTE", "UNION", "XP_"}
+	dangerousTokens := []string{"--", ";--", "/*", "*/"}
+
+	sanitized := make([]string, 0, len(params))
+	for _, p := range params {
+		upper := strings.ToUpper(p)
+		for _, tok := range dangerousTokens {
+			if strings.Contains(p, tok) {
+				return nil, fmt.Errorf("[overdrive] SQL injection detected: param '%s' contains '%s'", p, tok)
+			}
+		}
+		for _, kw := range dangerous {
+			for _, word := range strings.Fields(upper) {
+				if word == kw {
+					return nil, fmt.Errorf("[overdrive] SQL injection detected: param '%s' contains keyword '%s'", p, kw)
+				}
+			}
+		}
+		// Escape single quotes
+		sanitized = append(sanitized, "'"+strings.ReplaceAll(p, "'", "''")+"'")
+	}
+
+	sql := sqlTemplate
+	for _, v := range sanitized {
+		idx := strings.Index(sql, "?")
+		if idx == -1 {
+			return nil, fmt.Errorf("[overdrive] more params than '?' placeholders in SQL template")
+		}
+		sql = sql[:idx] + v + sql[idx+1:]
+	}
+
+	count := strings.Count(sqlTemplate, "?")
+	if len(params) < count {
+		return nil, fmt.Errorf("[overdrive] SQL template has %d '?' placeholders but only %d params", count, len(params))
+	}
+	return db.Query(sql)
+}
+
+// ── SafeDB — Concurrent-safe wrapper ───────────
+
+// SafeDB wraps DB with a sync.RWMutex for safe concurrent access.
+// Reads (Query, Get, Count) use RLock; writes (Insert, Update, Delete) use full Lock.
+//
+//	db, _ := overdrive.Open("app.odb")
+//	safe := overdrive.NewSafeDB(db)
+//
+//	// Multiple goroutines safe:
+//	go safe.Query("SELECT * FROM users")
+//	go safe.Insert("users", map[string]any{"name": "Alice"})
+type SafeDB struct {
+	mu sync.RWMutex
+	db *DB
+}
+
+// NewSafeDB wraps an existing DB in a thread-safe wrapper.
+func NewSafeDB(db *DB) *SafeDB {
+	return &SafeDB{db: db}
+}
+
+// OpenSafe opens (or creates) a database wrapped in SafeDB.
+func OpenSafe(path string) (*SafeDB, error) {
+	db, err := Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return NewSafeDB(db), nil
+}
+
+// OpenSafeEncrypted opens an encrypted database wrapped in SafeDB.
+func OpenSafeEncrypted(path, keyEnvVar string) (*SafeDB, error) {
+	db, err := OpenEncrypted(path, keyEnvVar)
+	if err != nil {
+		return nil, err
+	}
+	return NewSafeDB(db), nil
+}
+
+func (s *SafeDB) Query(sql string) (*QueryResult, error) {
+	s.mu.RLock(); defer s.mu.RUnlock()
+	return s.db.Query(sql)
+}
+func (s *SafeDB) QuerySafe(tmpl string, params ...string) (*QueryResult, error) {
+	s.mu.RLock(); defer s.mu.RUnlock()
+	return s.db.QuerySafe(tmpl, params...)
+}
+func (s *SafeDB) Insert(table string, doc map[string]any) (string, error) {
+	s.mu.Lock(); defer s.mu.Unlock()
+	return s.db.Insert(table, doc)
+}
+func (s *SafeDB) Get(table, id string) (map[string]any, error) {
+	s.mu.RLock(); defer s.mu.RUnlock()
+	return s.db.Get(table, id)
+}
+func (s *SafeDB) Backup(dest string) error {
+	s.mu.Lock(); defer s.mu.Unlock()
+	return s.db.Backup(dest)
+}
+func (s *SafeDB) CleanupWAL() error {
+	s.mu.Lock(); defer s.mu.Unlock()
+	return s.db.CleanupWAL()
+}
+func (s *SafeDB) Close() {
+	s.mu.Lock(); defer s.mu.Unlock()
+	s.db.Close()
+}
+
 

@@ -32,6 +32,10 @@ pub enum SdkError {
     TransactionError(String),
     /// Database is closed
     DatabaseClosed,
+    /// Security error — key missing, permission denied, injection detected
+    SecurityError(String),
+    /// Backup error — failed to copy or sync database files
+    BackupError(String),
     /// Internal engine error
     Internal(String),
 }
@@ -50,6 +54,8 @@ impl fmt::Display for SdkError {
             SdkError::ConstraintViolation(c) => write!(f, "Constraint violation: {}", c),
             SdkError::TransactionError(e) => write!(f, "Transaction error: {}", e),
             SdkError::DatabaseClosed => write!(f, "Database is closed"),
+            SdkError::SecurityError(e) => write!(f, "Security error: {}", e),
+            SdkError::BackupError(e) => write!(f, "Backup error: {}", e),
             SdkError::Internal(e) => write!(f, "Internal error: {}", e),
         }
     }

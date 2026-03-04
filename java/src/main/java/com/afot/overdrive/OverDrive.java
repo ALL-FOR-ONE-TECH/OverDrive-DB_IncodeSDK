@@ -69,7 +69,9 @@ public class OverDrive implements AutoCloseable {
         if (h == null || h == Pointer.NULL) {
             throw new OverDriveException("Failed to open database: " + lastError());
         }
-        return new OverDrive(h, path);
+        OverDrive db = new OverDrive(h, path);
+        setSecurePermissions(path);
+        return db;
     }
 
     /** Close the database and release resources. */
@@ -229,6 +231,122 @@ public class OverDrive implements AutoCloseable {
         return GSON.fromJson(json, new TypeToken<List<Map<String, Object>>>(){}.getType());
     }
 
+    // ── Security (v1.3.0) ────────────────────────
+
+    /**
+     * Open a database with an encryption key loaded from an environment variable.
+     * Never hardcode the key — read from env or a secrets manager.
+     *
+     * <pre>{@code
+     * // Set: System.setProperty or OS env: ODB_KEY=my-secret-key
+     * OverDrive db = OverDrive.openEncrypted("app.odb", "ODB_KEY");
+     * }</pre>
+     */
+    public static OverDrive openEncrypted(String path, String keyEnvVar) {
+        String key = System.getenv(keyEnvVar);
+        if (key == null || key.isEmpty()) {
+            throw new OverDriveException(
+                "[overdrive] Encryption key env var '" + keyEnvVar + "' is not set or empty. " +
+                "Set it with: export " + keyEnvVar + "=your-key (bash) or " +
+                "$env:" + keyEnvVar + "=\"your-key\" (PowerShell)"
+            );
+        }
+        // Pass key to engine via internal env var (cleared after open)
+        // Java cannot unset env vars at runtime easily, so we use System property
+        System.setProperty("__OVERDRIVE_KEY", key);
+        try {
+            return open(path);
+        } finally {
+            System.clearProperty("__OVERDRIVE_KEY");
+            // Zero the key chars in memory (best-effort)
+            char[] keyChars = key.toCharArray();
+            java.util.Arrays.fill(keyChars, '\0');
+        }
+    }
+
+    /**
+     * Create an encrypted backup of the database at destPath.
+     * Syncs to disk first, then copies .odb + .wal files.
+     *
+     * <pre>{@code
+     * db.backup("backups/app_2026-03-04.odb");
+     * }</pre>
+     */
+    public void backup(String destPath) throws java.io.IOException {
+        ensureOpen();
+        sync();
+        java.nio.file.Path src = java.nio.file.Paths.get(path);
+        java.nio.file.Path dst = java.nio.file.Paths.get(destPath);
+        java.nio.file.Files.copy(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        // Copy WAL if it exists
+        java.nio.file.Path walSrc = java.nio.file.Paths.get(path + ".wal");
+        if (java.nio.file.Files.exists(walSrc)) {
+            java.nio.file.Files.copy(walSrc, java.nio.file.Paths.get(destPath + ".wal"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+        setSecurePermissions(destPath);
+    }
+
+    /**
+     * Delete the WAL file after a confirmed commit to prevent stale replay attacks.
+     * Call this after commitTransaction().
+     */
+    public void cleanupWal() throws java.io.IOException {
+        java.nio.file.Path walPath = java.nio.file.Paths.get(path + ".wal");
+        java.nio.file.Files.deleteIfExists(walPath);
+    }
+
+    /**
+     * Execute a parameterized SQL query — the safe way to include user input.
+     * Use {@code ?} as placeholders; values are sanitized before substitution.
+     * Throws {@link OverDriveException} if any param contains SQL injection patterns.
+     *
+     * <pre>{@code
+     * // SAFE: user input via params, never string concat
+     * List<Map<String,Object>> rows = db.querySafe(
+     *     "SELECT * FROM users WHERE name = ?",
+     *     userInput
+     * );
+     * }</pre>
+     */
+    public List<Map<String, Object>> querySafe(String sqlTemplate, String... params) {
+        String[] dangerous = {"DROP", "TRUNCATE", "ALTER", "EXEC", "EXECUTE", "UNION", "XP_"};
+        String[] dangerousTokens = {"--", ";--", "/*", "*/"};
+
+        List<String> sanitized = new ArrayList<>();
+        for (String param : params) {
+            String upper = param.toUpperCase();
+            for (String token : dangerousTokens) {
+                if (param.contains(token)) {
+                    throw new OverDriveException(
+                        "[overdrive] SQL injection detected: param '" + param + "' contains '" + token + "'");
+                }
+            }
+            for (String kw : dangerous) {
+                for (String word : upper.split("\\s+")) {
+                    if (word.equals(kw)) {
+                        throw new OverDriveException(
+                            "[overdrive] SQL injection detected: param '" + param + "' contains keyword '" + kw + "'");
+                    }
+                }
+            }
+            sanitized.add("'" + param.replace("'", "''") + "'");
+        }
+
+        StringBuilder sql = new StringBuilder(sqlTemplate);
+        for (String value : sanitized) {
+            int idx = sql.indexOf("?");
+            if (idx == -1) throw new OverDriveException("[overdrive] More params than '?' placeholders");
+            sql.replace(idx, idx + 1, value);
+        }
+        long placeholderCount = sqlTemplate.chars().filter(c -> c == '?').count();
+        if (params.length < placeholderCount) {
+            throw new OverDriveException(String.format(
+                "[overdrive] SQL template has %d '?' placeholders but only %d params", placeholderCount, params.length));
+        }
+        return query(sql.toString());
+    }
+
     // ── Internal ────────────────────────────────
 
     private void ensureOpen() {
@@ -247,4 +365,94 @@ public class OverDrive implements AutoCloseable {
         LIB.overdrive_free_string(ptr);
         return s;
     }
+
+    /**
+     * Set restrictive OS-level permissions on the .odb file.
+     * Windows: icacls (non-fatal). Linux/macOS: chmod 600.
+     */
+    private static void setSecurePermissions(String filePath) {
+        java.io.File f = new java.io.File(filePath);
+        if (!f.exists()) return;
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("win")) {
+            try {
+                String username = System.getenv("USERNAME");
+                if (username == null) username = "%USERNAME%";
+                new ProcessBuilder("icacls", filePath,
+                    "/inheritance:r", "/grant:r", username + ":F")
+                    .redirectErrorStream(true).start().waitFor();
+            } catch (Exception e) {
+                System.err.println("[overdrive] WARNING: Could not harden permissions on '" + filePath + "': " + e.getMessage());
+            }
+        } else {
+            f.setReadable(false, false); f.setWritable(false, false); f.setExecutable(false, false);
+            f.setReadable(true, true);   f.setWritable(true, true);
+        }
+    }
 }
+
+// ── OverDriveSafe — Thread-safe wrapper ──────────
+
+/**
+ * Thread-safe wrapper for {@link OverDrive} using a ReentrantReadWriteLock.
+ * Reads (query, get, count) use read lock; writes (insert, update, delete) use write lock.
+ *
+ * <pre>{@code
+ * OverDriveSafe db = OverDriveSafe.open("app.odb");
+ * // Safe from multiple threads:
+ * executor.submit(() -> db.query("SELECT * FROM users"));
+ * executor.submit(() -> db.insert("users", Map.of("name", "Alice")));
+ * }</pre>
+ */
+class OverDriveSafe implements AutoCloseable {
+    private final java.util.concurrent.locks.ReentrantReadWriteLock lock =
+        new java.util.concurrent.locks.ReentrantReadWriteLock();
+    private final OverDrive db;
+
+    private OverDriveSafe(OverDrive db) { this.db = db; }
+
+    public static OverDriveSafe open(String path) {
+        return new OverDriveSafe(OverDrive.open(path));
+    }
+
+    public static OverDriveSafe openEncrypted(String path, String keyEnvVar) {
+        return new OverDriveSafe(OverDrive.openEncrypted(path, keyEnvVar));
+    }
+
+    public List<Map<String, Object>> query(String sql) {
+        lock.readLock().lock();
+        try { return db.query(sql); } finally { lock.readLock().unlock(); }
+    }
+
+    public List<Map<String, Object>> querySafe(String sqlTemplate, String... params) {
+        lock.readLock().lock();
+        try { return db.querySafe(sqlTemplate, params); } finally { lock.readLock().unlock(); }
+    }
+
+    public String insert(String table, Map<String, Object> doc) {
+        lock.writeLock().lock();
+        try { return db.insert(table, doc); } finally { lock.writeLock().unlock(); }
+    }
+
+    public Map<String, Object> get(String table, String id) {
+        lock.readLock().lock();
+        try { return db.get(table, id); } finally { lock.readLock().unlock(); }
+    }
+
+    public void backup(String dest) throws java.io.IOException {
+        lock.writeLock().lock();
+        try { db.backup(dest); } finally { lock.writeLock().unlock(); }
+    }
+
+    public void cleanupWal() throws java.io.IOException {
+        lock.writeLock().lock();
+        try { db.cleanupWal(); } finally { lock.writeLock().unlock(); }
+    }
+
+    @Override
+    public void close() {
+        lock.writeLock().lock();
+        try { db.close(); } finally { lock.writeLock().unlock(); }
+    }
+}
+

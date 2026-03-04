@@ -32,8 +32,9 @@ OverDrive is an **embeddable, zero-config document database** for Rust, Python, 
 | 🔒 **ACID Transactions** | Reliable, consistent data operations |
 | 🗜️ **Compression** | zstd compression for efficient storage |
 | 🔐 **Encryption** | AES-256-GCM at-rest encryption |
+| 🛡️ **Security Hardened** | Key from env vars, `query_safe()` injection blocking, auto `chmod 600`, WAL cleanup, thread-safe wrappers |
 | 🌍 **Cross-platform** | Windows, Linux, macOS |
-| 🔗 **Multi-language** | Rust, Python, Node.js, C, C++ |
+| 🔗 **Multi-language** | Rust, Python, Node.js, Java, Go, C/C++ |
 
 ---
 
@@ -53,7 +54,7 @@ OverDrive is an **embeddable, zero-config document database** for Rust, Python, 
 
 ```toml
 [dependencies]
-overdrive-db = "1.1.0"
+overdrive-db = "1.3.0"
 ```
 
 ### Use
@@ -153,6 +154,7 @@ fn main() {
 | Method | Description |
 |---|---|
 | `db.query(sql)` | Execute SQL, returns `QueryResult` |
+| `db.query_safe(sql, &[params])` | ✅ Parameterized query — safe for user input |
 
 ```sql
 -- Supported SQL
@@ -174,6 +176,46 @@ SHOW TABLES
 | `db.create_index(table, column)` | Create B-Tree index |
 | `db.drop_index(name)` | Drop an index |
 
+### Security APIs (v1.3.0)
+
+| Method | Threat Mitigated | Description |
+|---|---|---|
+| `OverDriveDB::open_encrypted(path, "ODB_KEY")` | 🔴 Key hardcoding | Reads AES key from env var, zeroed on drop |
+| `db.query_safe(sql, &[params])` | 🟠 SQL injection | Parameterized query with injection detection |
+| `db.backup(dest_path)` | 🔴 Ransomware/deletion | Encrypted backup copy + permission hardening |
+| `db.cleanup_wal()` | 🟡 WAL replay | Deletes stale WAL after commit |
+| `SharedDB::open(path)` | 🟠 Race condition | Thread-safe Arc+Mutex wrapper |
+| Auto on `open()` | 🟡 Unauthorized access | `chmod 600` / Windows ACL on every open |
+
+```rust
+// Set env var (never hardcode!)
+// $env:ODB_KEY = "my-aes-256-key-32-chars-min!!!!"
+use overdrive::OverDriveDB;
+use overdrive::shared::SharedDB;
+
+// 1. Open with key from environment
+let mut db = OverDriveDB::open_encrypted("app.odb", "ODB_KEY")?;
+
+// 2. Safe parameterized query — blocks SQL injection
+let rows = db.query_safe(
+    "SELECT * FROM users WHERE name = ?",
+    &[user_input],  // injection attempt is blocked automatically
+)?;
+
+// 3. Backup
+db.backup("offsite/app_backup.odb")?;
+
+// 4. WAL cleanup after commit
+let txn = db.begin_transaction(IsolationLevel::ReadCommitted)?;
+db.commit_transaction(&txn)?;
+db.cleanup_wal()?;
+
+// 5. Thread-safe access
+let shared = SharedDB::open("app.odb")?;
+let db2 = shared.clone();
+std::thread::spawn(move || db2.query("SELECT * FROM users"));
+```
+
 ### Statistics
 
 | Method | Description |
@@ -189,35 +231,31 @@ pip install overdrive-db
 ```
 
 ```python
-from overdrive import OverDrive
+from overdrive import OverDrive, ThreadSafeOverDrive
+import os
 
 # Context manager for automatic cleanup
-with OverDrive("myapp.odb") as db:
+with OverDrive("myapp.odb") as db:  # permissions auto-hardened on open
     db.create_table("users")
 
     # Insert
-    user_id = db.insert("users", {
-        "name": "Alice",
-        "email": "alice@example.com",
-        "age": 30
-    })
+    user_id = db.insert("users", {"name": "Alice", "email": "alice@example.com", "age": 30})
 
-    # SQL Query
-    results = db.query("SELECT * FROM users WHERE age > 25")
+    # Safe parameterized query
+    results = db.query_safe("SELECT * FROM users WHERE age > ?", [25])
     for row in results:
         print(f"  {row['name']} — {row['email']}")
 
     # Full-text search
     matches = db.search("users", "alice")
 
-    # Batch insert
-    db.insert_many("users", [
-        {"name": "Bob", "age": 25},
-        {"name": "Charlie", "age": 35},
-    ])
+    # Backup + WAL cleanup after commit
+    db.backup("backups/app.odb")
+    db.cleanup_wal()
 
-    # Count
-    print(f"Total users: {db.count('users')}")
+# Thread-safe multi-threaded access
+os.environ["ODB_KEY"] = "my-secret-key"
+db = ThreadSafeOverDrive.open_encrypted("app.odb", "ODB_KEY")
 ```
 
 ---
@@ -229,34 +267,26 @@ npm install overdrive-db
 ```
 
 ```javascript
-const { OverDrive } = require('overdrive-db');
+const { OverDrive, SharedOverDrive } = require('overdrive-db');
 
-const db = new OverDrive('myapp.odb');
+const db = new OverDrive('myapp.odb'); // permissions auto-hardened
 
-// Create table
+// Create table & insert
 db.createTable('products');
+const id = db.insert('products', { name: 'Laptop', price: 999.99 });
 
-// Insert
-const id = db.insert('products', {
-    name: 'Laptop',
-    price: 999.99,
-    specs: { ram: '16GB', cpu: 'i7' }
-});
-
-// SQL Query
-const results = db.query('SELECT * FROM products WHERE price > 500');
+// ✅ Safe parameterized query
+const results = db.querySafe('SELECT * FROM products WHERE price > ?', ['500']);
 console.table(results);
 
-// Batch insert
-const ids = db.insertMany('products', [
-    { name: 'Mouse', price: 29.99 },
-    { name: 'Keyboard', price: 79.99 },
-]);
+// Backup & WAL cleanup
+db.backup('backups/products.odb');
+db.cleanupWal();
 
-// Count
-console.log(`Total products: ${db.count('products')}`);
+// Async-safe shared access across async handlers
+const shared = new SharedOverDrive('app.odb');
+await shared.query('SELECT * FROM products');
 
-// Clean up
 db.close();
 ```
 
@@ -315,14 +345,24 @@ go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/go
 import "github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/go"
 
 func main() {
+    // Open (permissions auto-hardened)
     db, _ := overdrive.Open("myapp.odb")
     defer db.Close()
 
     db.CreateTable("users")
     id, _ := db.Insert("users", map[string]any{"name": "Alice", "age": 30})
-    
-    // SQL Query
-    results, _ := db.Query("SELECT * FROM users WHERE age > 25")
+
+    // ✅ Safe parameterized query
+    results, _ := db.QuerySafe("SELECT * FROM users WHERE age > ?", "25")
+
+    // Thread-safe access
+    safe, _ := overdrive.OpenSafe("app.odb")
+    go safe.Query("SELECT * FROM users")
+
+    // Backup + WAL cleanup
+    db.Backup("backups/app.odb")
+    db.CleanupWAL()
+    _ = id
 }
 ```
 
@@ -335,18 +375,32 @@ func main() {
 <dependency>
     <groupId>com.afot</groupId>
     <artifactId>overdrive-db</artifactId>
-    <version>1.0.1</version>
+    <version>1.3.0</version>
 </dependency>
 ```
 
 ```java
 import com.afot.overdrive.OverDrive;
+import com.afot.overdrive.OverDriveSafe;
+import java.util.Map;
 
 public class Main {
-    public static void main(String[] args) {
-        try (OverDrive db = new OverDrive("myapp.odb")) {
+    public static void main(String[] args) throws Exception {
+        // Open with auto permission hardening
+        try (OverDrive db = OverDrive.open("myapp.odb")) {
             db.createTable("users");
-            String id = db.insert("users", "{\"name\":\"Alice\"}");
+            String id = db.insert("users", Map.of("name", "Alice", "age", 30));
+
+            // ✅ Safe parameterized query
+            var rows = db.querySafe("SELECT * FROM users WHERE name = ?", userInput);
+
+            // Backup + WAL cleanup
+            db.backup("backups/app.odb");
+            db.cleanupWal();
+        }
+        // Thread-safe access
+        try (OverDriveSafe safe = OverDriveSafe.open("app.odb")) {
+            safe.insert("users", Map.of("name", "Bob"));
         }
     }
 }
@@ -361,15 +415,16 @@ public class Main {
 │           Your Application          │
 │                                     │
 │  db = OverDriveDB::open("app.odb")  │
-│  db.insert("users", {...})          │
-│  db.query("SELECT * FROM ...")      │
+│  db.query_safe("WHERE name = ?", …) │
+│  shared = SharedDB::open(…)         │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
-│         OverDrive SDK (1.0.0)       │
+│    OverDrive SDK (1.3.0) — Secure   │
 │                                     │
 │  OverDriveDB  │  QueryEngine  │ FFI │
-│  (lib.rs)     │  (SQL parser) │     │
+│  SharedDB     │  query_safe   │     │
+│  SecretKey    │  set_perms    │     │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
@@ -380,9 +435,9 @@ public class Main {
 └─────────────────────────────────────┘
                │
          ┌─────▼─────┐
-         │  app.odb   │
-         │  (file)    │
-         └───────────-┘
+         │  app.odb   │  ← AES-256-GCM encrypted
+         │  (chmod 600│     owner-only permissions
+         └────────────┘
 ```
 
 - **No network** — everything runs in-process
@@ -441,23 +496,29 @@ cargo test
 
 ```
 OverDrive-DB_SDK/
-├── Cargo.toml           # Crate configuration
+├── Cargo.toml           # Crate configuration (v1.3.0)
 ├── README.md            # This file
 ├── LICENSE              # MIT License
-├── cbindgen.toml        # C header generation config
 │
 ├── src/
-│   ├── lib.rs           # OverDriveDB struct + public API
+│   ├── lib.rs           # OverDriveDB + all security APIs
+│   ├── shared.rs        # SharedDB — thread-safe wrapper (NEW v1.3.0)
 │   ├── query_engine.rs  # Embedded SQL parser & executor
-│   ├── result.rs        # SdkError types + From impls
+│   ├── result.rs        # SdkError types (SecurityError, BackupError)
 │   └── ffi.rs           # C FFI extern functions
 │
-├── python/
-│   └── overdrive/
-│       └── __init__.py  # Python ctypes wrapper
+├── python/overdrive/
+│   └── __init__.py      # Python ctypes wrapper + security APIs
 │
 ├── nodejs/
-│   └── index.js         # Node.js ffi-napi wrapper
+│   └── index.js         # Node.js ffi-napi wrapper + security APIs
+│
+├── go/
+│   └── overdrive.go     # Go CGo bindings + security APIs + SafeDB
+│
+├── java/src/.../
+│   ├── OverDrive.java   # Java JNA wrapper + security APIs
+│   └── OverDriveSafe.java # Thread-safe wrapper (in OverDrive.java)
 │
 ├── docs/
 │   ├── quickstart.md    # Getting started guide
@@ -466,12 +527,13 @@ OverDrive-DB_SDK/
 │   ├── python-guide.md  # Python SDK guide
 │   ├── nodejs-guide.md  # Node.js SDK guide
 │   ├── c-guide.md       # C/C++ integration guide
-│   └── architecture.md  # How it works internally
+│   └── architecture.md  # Architecture + v1.3.0 Security Model
 │
 └── examples/
     ├── basic_crud.rs     # Basic CRUD operations
     ├── sql_queries.rs    # SQL query examples
-    └── batch_ops.rs      # Batch operations
+    ├── batch_ops.rs      # Batch operations
+    └── secure_open.rs    # 🔐 Security hardening demo (NEW v1.3.0)
 ```
 
 ---

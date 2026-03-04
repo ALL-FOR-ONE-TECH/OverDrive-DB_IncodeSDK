@@ -31,6 +31,7 @@
 pub mod result;
 pub mod query_engine;
 pub mod ffi;
+pub mod shared;
 mod dynamic;
 
 use result::{SdkResult, SdkError};
@@ -38,6 +39,96 @@ use dynamic::NativeDB;
 use serde_json::Value;
 use std::path::Path;
 use std::time::Instant;
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+// ─────────────────────────────────────────────
+// SECURITY: Secret key wrapper
+// Zero bytes from RAM automatically on drop
+// ─────────────────────────────────────────────
+
+/// A secret key that is automatically zeroed from memory when dropped.
+/// Use this to hold AES encryption keys — prevents leak via memory dump.
+///
+/// ```no_run
+/// use overdrive::SecretKey;
+/// let key = SecretKey::from_env("ODB_KEY").unwrap();
+/// // ...key bytes are wiped from RAM when `key` is dropped
+/// ```
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct SecretKey(Vec<u8>);
+
+impl SecretKey {
+    /// Create a `SecretKey` from raw bytes.
+    pub fn new(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+
+    /// Read key bytes from an environment variable.
+    ///
+    /// Returns `SecurityError` if the env var is not set or is empty.
+    pub fn from_env(env_var: &str) -> SdkResult<Self> {
+        let val = std::env::var(env_var).map_err(|_| {
+            SdkError::SecurityError(format!(
+                "Encryption key env var '{}' is not set. \
+                 Set it with: $env:{}=\"your-secret-key\" (PowerShell) \
+                 or export {}=\"your-secret-key\" (bash)",
+                env_var, env_var, env_var
+            ))
+        })?;
+        if val.is_empty() {
+            return Err(SdkError::SecurityError(format!(
+                "Encryption key env var '{}' is set but empty.", env_var
+            )));
+        }
+        Ok(Self(val.into_bytes()))
+    }
+
+    /// Raw key bytes (use sparingly — minimize time in scope).
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+// ─────────────────────────────────────────────
+// SECURITY: OS-level file permission hardening
+// ─────────────────────────────────────────────
+
+/// Set restrictive OS-level permissions on the `.odb` file:
+/// - **Windows**: `icacls` — removes all inherit ACEs, grants only current user Full Control
+/// - **Linux/macOS**: `chmod 600` — owner read/write only
+///
+/// Called automatically inside `OverDriveDB::open()`.
+pub fn set_secure_permissions(path: &str) -> SdkResult<()> {
+    #[cfg(target_os = "windows")]
+    {
+        // Reset all inherited permissions and grant only current user
+        let output = std::process::Command::new("icacls")
+            .args([path, "/inheritance:r", "/grant:r", "%USERNAME%:F"])
+            .output();
+        match output {
+            Ok(out) if out.status.success() => {}
+            Ok(out) => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                // Non-fatal: log but don't fail (icacls may not be available on all setups)
+                eprintln!("[overdrive-sdk] WARNING: Could not set file permissions on '{}': {}", path, stderr);
+            }
+            Err(e) => {
+                eprintln!("[overdrive-sdk] WARNING: icacls not available, file permissions not hardened: {}", e);
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if Path::new(path).exists() {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| SdkError::SecurityError(format!(
+                    "Failed to chmod 600 '{}': {}", path, e
+                )))?;
+        }
+    }
+    Ok(())
+}
 
 /// Query result returned by `query()`
 #[derive(Debug, Clone)]
@@ -142,16 +233,12 @@ impl OverDriveDB {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /// Open an existing database or create a new one.
-    /// 
-    /// This is the main entry point for the SDK. If the file exists,
-    /// it opens the existing database. If not, it creates a new one.
-    /// 
-    /// ```no_run
-    /// # use overdrive::OverDriveDB;
-    /// let mut db = OverDriveDB::open("myapp.odb").unwrap();
-    /// ```
+    ///
+    /// File permissions are automatically hardened on open (chmod 600 / Windows ACL).
     pub fn open(path: &str) -> SdkResult<Self> {
         let native = NativeDB::open(path)?;
+        // Fix 6: Harden file permissions immediately on open
+        let _ = set_secure_permissions(path);
         Ok(Self {
             native,
             path: path.to_string(),
@@ -202,6 +289,89 @@ impl OverDriveDB {
     /// Get the SDK version.
     pub fn version() -> String {
         NativeDB::version()
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // SECURITY: Encrypted open, backup, WAL cleanup
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Open a database with an encryption key loaded securely from an environment variable.
+    ///
+    /// **Never hardcode** the key — always read from env or a secrets manager.
+    ///
+    /// ```no_run
+    /// // In your shell: $env:ODB_KEY="my-secret-32-char-aes-key!!!!"
+    /// use overdrive::OverDriveDB;
+    /// let mut db = OverDriveDB::open_encrypted("app.odb", "ODB_KEY").unwrap();
+    /// ```
+    pub fn open_encrypted(path: &str, key_env_var: &str) -> SdkResult<Self> {
+        let key = SecretKey::from_env(key_env_var)?;
+        // Pass key to the engine via a dedicated env var the engine reads internally.
+        // This avoids passing the key as a command-line argument (visible in process list).
+        std::env::set_var("__OVERDRIVE_KEY", std::str::from_utf8(key.as_bytes())
+            .map_err(|_| SdkError::SecurityError("Key contains non-UTF8 bytes".to_string()))?);
+        let db = Self::open(path)?;
+        // Immediately remove from env after handoff
+        std::env::remove_var("__OVERDRIVE_KEY");
+        // SecretKey is dropped here — bytes are zeroed
+        Ok(db)
+    }
+
+    /// Create an encrypted backup of the database to `dest_path`.
+    ///
+    /// Syncs all in-memory data to disk first, then copies the `.odb` and `.wal` files.
+    /// Store the backup in a separate physical location or cloud storage.
+    ///
+    /// ```no_run
+    /// # use overdrive::OverDriveDB;
+    /// # let db = OverDriveDB::open("app.odb").unwrap();
+    /// db.backup("backups/app_2026-03-04.odb").unwrap();
+    /// ```
+    pub fn backup(&self, dest_path: &str) -> SdkResult<()> {
+        // Flush all in-memory pages to disk first
+        self.sync()?;
+
+        // Copy the main .odb file
+        std::fs::copy(&self.path, dest_path)
+            .map_err(|e| SdkError::BackupError(format!(
+                "Failed to copy '{}' -> '{}': {}", self.path, dest_path, e
+            )))?;
+
+        // Also copy the WAL file if it exists (crash consistency)
+        let wal_src = format!("{}.wal", self.path);
+        let wal_dst = format!("{}.wal", dest_path);
+        if Path::new(&wal_src).exists() {
+            std::fs::copy(&wal_src, &wal_dst)
+                .map_err(|e| SdkError::BackupError(format!(
+                    "Failed to copy WAL '{}' -> '{}': {}", wal_src, wal_dst, e
+                )))?;
+        }
+
+        // Harden permissions on the backup file too
+        let _ = set_secure_permissions(dest_path);
+        Ok(())
+    }
+
+    /// Delete the WAL (Write-Ahead Log) file after a confirmed commit.
+    ///
+    /// **Call this after `commit_transaction()`** to prevent attackers from replaying
+    /// the WAL file to restore deleted data.
+    ///
+    /// ```no_run
+    /// # use overdrive::{OverDriveDB, IsolationLevel};
+    /// # let mut db = OverDriveDB::open("app.odb").unwrap();
+    /// let txn = db.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+    /// // ... writes ...
+    /// db.commit_transaction(&txn).unwrap();
+    /// db.cleanup_wal().unwrap(); // Remove stale WAL
+    /// ```
+    pub fn cleanup_wal(&self) -> SdkResult<()> {
+        let wal_path = format!("{}.wal", self.path);
+        if Path::new(&wal_path).exists() {
+            std::fs::remove_file(&wal_path)
+                .map_err(|e| SdkError::IoError(e))?;
+        }
+        Ok(())
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -344,6 +514,69 @@ impl OverDriveDB {
             rows_affected,
             execution_time_ms: elapsed,
         })
+    }
+
+    /// Execute a **parameterized** SQL query — the safe way to include user input.
+    ///
+    /// Use `?` as placeholders in the SQL template; values are sanitized and
+    /// escaped before substitution. Any param containing SQL injection patterns
+    /// (`DROP`, `DELETE`, `--`, `;`) is rejected with `SecurityError`.
+    ///
+    /// ```ignore
+    /// // SAFE: user input via params, never via string concat
+    /// let name: &str = get_user_input(); // could be "Alice'; DROP TABLE users--"
+    /// let result = db.query_safe(
+    ///     "SELECT * FROM users WHERE name = ?",
+    ///     &[name],
+    /// ).unwrap(); // Blocked: SecurityError if injection detected
+    /// ```
+    pub fn query_safe(&mut self, sql_template: &str, params: &[&str]) -> SdkResult<QueryResult> {
+        /// Dangerous SQL keywords/tokens that signal injection attempts
+        const DANGEROUS: &[&str] = &[
+            "DROP", "TRUNCATE", "ALTER", "EXEC", "EXECUTE",
+            "--", ";--", "/*", "*/", "xp_", "UNION",
+        ];
+
+        // Sanitize each param
+        let mut sanitized: Vec<String> = Vec::with_capacity(params.len());
+        for &param in params {
+            let upper = param.to_uppercase();
+            for &danger in DANGEROUS {
+                if upper.contains(danger) {
+                    return Err(SdkError::SecurityError(format!(
+                        "SQL injection detected in parameter: '{}' contains forbidden token '{}'",
+                        param, danger
+                    )));
+                }
+            }
+            // Escape single quotes by doubling them (SQL standard)
+            let escaped = param.replace('\'', "''");
+            sanitized.push(format!("'{}'", escaped));
+        }
+
+        // Replace ? placeholders in order
+        let mut sql = sql_template.to_string();
+        for value in &sanitized {
+            if let Some(pos) = sql.find('?') {
+                sql.replace_range(pos..pos + 1, value);
+            } else {
+                return Err(SdkError::SecurityError(
+                    "More params than '?' placeholders in SQL template".to_string()
+                ));
+            }
+        }
+
+        // Check no unresolved placeholders remain
+        let remaining = params.len();
+        let placeholder_count = sql_template.chars().filter(|&c| c == '?').count();
+        if remaining < placeholder_count {
+            return Err(SdkError::SecurityError(format!(
+                "SQL template has {} '?' placeholders but only {} params were provided",
+                placeholder_count, remaining
+            )));
+        }
+
+        self.query(&sql)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

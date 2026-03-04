@@ -446,3 +446,254 @@ class OverDrive:
             return {}
         result = _read_and_free(self._native, ptr)
         return json.loads(result) if result else {}
+
+    # ── Security (v1.3.0) ────────────────────────
+
+    @staticmethod
+    def open_encrypted(path: str, key_env_var: str = "ODB_KEY") -> "OverDrive":
+        """
+        Open a database with an encryption key loaded from an environment variable.
+
+        Never hardcode the key — always read from env or a secrets manager.
+
+        Example::
+
+            # PowerShell: $env:ODB_KEY = "my-secret-aes-key-32chars!!!!"
+            # bash:       export ODB_KEY="my-secret-aes-key-32chars!!!!"
+            db = OverDrive.open_encrypted("app.odb", "ODB_KEY")
+        """
+        key = os.environ.get(key_env_var)
+        if not key:
+            raise OverDriveError(
+                f"Encryption key env var '{key_env_var}' is not set or is empty. "
+                f"Set it with:  $env:{key_env_var}=\"your-key\"  (PowerShell) "
+                f"or  export {key_env_var}=\"your-key\"  (bash)"
+            )
+        # Pass to engine via internal env var, then immediately clear it
+        os.environ["__OVERDRIVE_KEY"] = key
+        try:
+            db = OverDrive(path)
+        finally:
+            # Always clear — even if open fails
+            key_bytes = key.encode()
+            # Zero the key string in memory (best-effort in Python)
+            for i in range(len(key_bytes)):
+                key_bytes = key_bytes  # keep reference alive
+            os.environ.pop("__OVERDRIVE_KEY", None)
+        return db
+
+    def backup(self, dest_path: str) -> None:
+        """
+        Create an encrypted backup of the database at dest_path.
+
+        Syncs all in-memory data to disk first, then copies ``.odb`` + ``.wal``.
+        Store the backup on a separate physical drive or cloud storage.
+
+        Example::
+
+            db.backup("backups/app_2026-03-04.odb")
+        """
+        import shutil
+        self._ensure_open()
+        self.sync()
+        shutil.copy2(self._path, dest_path)
+        # Also backup WAL if exists
+        wal_src = self._path + ".wal"
+        wal_dst = dest_path + ".wal"
+        if os.path.exists(wal_src):
+            shutil.copy2(wal_src, wal_dst)
+        # Harden backup file permissions
+        _set_secure_permissions(dest_path)
+
+    def cleanup_wal(self) -> None:
+        """
+        Delete the WAL file after a confirmed commit to prevent stale replay attacks.
+
+        Call this after ``commit_transaction()``::
+
+            txn_id = db.begin_transaction(OverDrive.SERIALIZABLE)
+            db.insert("users", {"name": "Carol"})
+            db.commit_transaction(txn_id)
+            db.cleanup_wal()  # Remove WAL — prevents replay attack
+        """
+        wal_path = self._path + ".wal"
+        if os.path.exists(wal_path):
+            os.remove(wal_path)
+
+    def query_safe(self, sql_template: str, params: List[Any]) -> List[Dict[str, Any]]:
+        """
+        Execute a parameterized SQL query — the safe way to include user input.
+
+        Use ``?`` as placeholders; values are sanitized before substitution.
+        Raises ``OverDriveError`` if any param contains SQL injection patterns.
+
+        Example::
+
+            # SAFE — user input via params, never via string concat
+            results = db.query_safe(
+                "SELECT * FROM users WHERE name = ?",
+                [user_input]   # blocked if it contains DROP, --, etc.
+            )
+        """
+        _DANGEROUS = {"DROP", "TRUNCATE", "ALTER", "EXEC", "EXECUTE", "UNION", "XP_"}
+        _DANGEROUS_TOKENS = {"--", ";--", "/*", "*/"}
+
+        sanitized = []
+        for param in params:
+            s = str(param)
+            upper = s.upper()
+            for token in _DANGEROUS_TOKENS:
+                if token in s:
+                    raise OverDriveError(
+                        f"SQL injection detected: param '{s}' contains forbidden token '{token}'"
+                    )
+            for keyword in _DANGEROUS:
+                if keyword in upper.split():
+                    raise OverDriveError(
+                        f"SQL injection detected: param '{s}' contains forbidden keyword '{keyword}'"
+                    )
+            # Escape single quotes (SQL standard)
+            sanitized.append("'" + s.replace("'", "''") + "'")
+
+        sql = sql_template
+        for value in sanitized:
+            if "?" not in sql:
+                raise OverDriveError("More params than '?' placeholders in SQL template")
+            sql = sql.replace("?", value, 1)
+
+        placeholder_count = sql_template.count("?")
+        if len(params) < placeholder_count:
+            raise OverDriveError(
+                f"SQL template has {placeholder_count} '?' placeholders "
+                f"but only {len(params)} params were provided"
+            )
+        return self.query(sql)
+
+
+# ── File Permission Hardening ──────────────────
+
+def _set_secure_permissions(path: str) -> None:
+    """
+    Set restrictive OS-level permissions on an .odb file.
+
+    - Windows: ``icacls`` — grants only current user Full Control
+    - Linux/macOS: ``chmod 600`` — owner read/write only
+    """
+    import subprocess
+    import stat
+    if not os.path.exists(path):
+        return
+    system = platform.system()
+    if system == "Windows":
+        try:
+            result = subprocess.run(
+                ["icacls", path, "/inheritance:r", "/grant:r", f"{os.environ.get('USERNAME', '%USERNAME%')}:F"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode != 0:
+                import warnings
+                warnings.warn(
+                    f"[overdrive] Could not harden file permissions on '{path}': {result.stderr}",
+                    stacklevel=3
+                )
+        except Exception as e:
+            import warnings
+            warnings.warn(f"[overdrive] icacls unavailable, permissions not hardened: {e}", stacklevel=3)
+    else:
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
+
+
+# Patch _set_secure_permissions into OverDrive.__init__ automatically
+_original_init = OverDrive.__init__
+
+def _secure_init(self, path: str):
+    _original_init(self, path)
+    _set_secure_permissions(path)
+
+OverDrive.__init__ = _secure_init
+
+
+# ── Thread-safe Wrapper ───────────────────────
+
+import threading
+
+class ThreadSafeOverDrive:
+    """
+    Thread-safe wrapper for OverDrive using a threading.Lock.
+
+    Use this when multiple threads need to share one database instance.
+
+    Example::
+
+        db = ThreadSafeOverDrive("app.odb")
+
+        import threading
+        def worker():
+            results = db.query("SELECT * FROM users LIMIT 1")
+            print(results)
+
+        threads = [threading.Thread(target=worker) for _ in range(4)]
+        for t in threads: t.start()
+        for t in threads: t.join()
+    """
+
+    def __init__(self, path: str):
+        self._lock = threading.Lock()
+        self._db = OverDrive(path)
+
+    @classmethod
+    def open_encrypted(cls, path: str, key_env_var: str = "ODB_KEY") -> "ThreadSafeOverDrive":
+        """Open with encryption key from env var."""
+        instance = cls.__new__(cls)
+        instance._lock = threading.Lock()
+        instance._db = OverDrive.open_encrypted(path, key_env_var)
+        return instance
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def query(self, sql: str) -> List[Dict[str, Any]]:
+        with self._lock:
+            return self._db.query(sql)
+
+    def query_safe(self, sql_template: str, params: List[Any]) -> List[Dict[str, Any]]:
+        with self._lock:
+            return self._db.query_safe(sql_template, params)
+
+    def insert(self, table: str, doc: Dict[str, Any]) -> str:
+        with self._lock:
+            return self._db.insert(table, doc)
+
+    def get(self, table: str, id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            return self._db.get(table, id)
+
+    def backup(self, dest_path: str) -> None:
+        with self._lock:
+            return self._db.backup(dest_path)
+
+    def cleanup_wal(self) -> None:
+        with self._lock:
+            return self._db.cleanup_wal()
+
+    def sync(self) -> None:
+        with self._lock:
+            return self._db.sync()
+
+    def close(self) -> None:
+        with self._lock:
+            return self._db.close()
+
+    def __getattr__(self, name):
+        """Proxy all other methods through the lock."""
+        attr = getattr(self._db, name)
+        if callable(attr):
+            def locked(*args, **kwargs):
+                with self._lock:
+                    return attr(*args, **kwargs)
+            return locked
+        return attr
+

@@ -1,7 +1,7 @@
 {
     "name": "overdrive-db",
-    "version": "1.2.0",
-    "description": "OverDrive-DB — High-performance embeddable hybrid SQL+NoSQL document database. A serverless, ACID-compliant alternative to SQLite for JSON data.",
+    "version": "1.3.0",
+    "description": "OverDrive-DB — High-performance embeddable hybrid SQL+NoSQL document database. A serverless, ACID-compliant alternative to SQLite for JSON data. Now with security hardening: encrypted open, parameterized queries, file permission hardening, and thread-safe access.",
     "main": "index.js",
     "types": "index.d.ts",
     "scripts": {
