@@ -1,15 +1,12 @@
 # Build & Release — OverDrive InCode SDK
 #
-# Runs on the PRIVATE repo (karthikeyanV2K/OverDrive-DB)
-# Builds native libraries for Windows, Linux, macOS
-# Uploads compiled binaries to the PUBLIC repo (ALL-FOR-ONE-TECH/OverDrive-DB_SDK)
-#
-# Source code NEVER leaves this repo — only compiled binaries are published.
+# Runs on the PUBLIC repo (ALL-FOR-ONE-TECH/OverDrive-DB_SDK)
+# The repo ROOT is the InCode SDK — there is NO IncodeSDK/ subdirectory.
 #
 # Pipeline:
-#   1. test        — Run ALL SDK tests on all platforms (gate before release)
-#   2. build       — Build release cdylib (DLL / .so / .dylib) with static CRT
-#   3. release     — Upload binaries + checksums to public SDK repo
+#   1. test    — Run ALL SDK tests (gate: release blocked until all pass)
+#   2. build   — Build native cdylib (overdrive.dll / .so / .dylib) — static CRT on Windows
+#   3. release — Publish binaries + checksums to GitHub Releases
 
 name: Build & Release SDK
 
@@ -20,57 +17,61 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. v1.2.0)'
+        description: 'Release version (e.g. v1.3.0)'
         required: true
-        default: 'v1.2.0'
+        default: 'v1.3.0'
 
 env:
-  SDK_REPO: ALL-FOR-ONE-TECH/OverDrive-DB_SDK
   CARGO_TERM_COLOR: always
 
 # ─────────────────────────────────────────────────────────────
-# JOB 1 — TEST GATE (must pass before any release build)
+# JOB 1 — TEST GATE
+# All SDK tests must pass before any release build starts.
 # ─────────────────────────────────────────────────────────────
 jobs:
   test:
-    name: Test (${{ matrix.name }})
+    name: Test — ${{ matrix.name }}
     strategy:
-      fail-fast: true        # All tests must pass — fail fast stops wasted runners
+      fail-fast: true
       matrix:
         include:
-          # ── Rust SDK unit tests ──────────────────────────
-          - name: Rust (ubuntu)
+          # Rust SDK ─────────────────────────────────────────
+          - name: "Rust / ubuntu"
             os: ubuntu-latest
             job: rust
-          - name: Rust (windows)
+
+          - name: "Rust / windows"
             os: windows-latest
             job: rust
-          - name: Rust (macos)
+
+          - name: "Rust / macos"
             os: macos-latest
             job: rust
 
-          # ── Node.js SDK ──────────────────────────────────
-          - name: Node.js 18
+          # Node.js SDK ─────────────────────────────────────
+          - name: "Node.js 18"
             os: ubuntu-latest
             job: nodejs
             node: '18'
-          - name: Node.js 20
+
+          - name: "Node.js 20"
             os: ubuntu-latest
             job: nodejs
             node: '20'
 
-          # ── Python SDK ───────────────────────────────────
-          - name: Python 3.10
+          # Python SDK ──────────────────────────────────────
+          - name: "Python 3.10"
             os: ubuntu-latest
             job: python
             python: '3.10'
-          - name: Python 3.12
+
+          - name: "Python 3.12"
             os: ubuntu-latest
             job: python
             python: '3.12'
 
-          # ── Java SDK ─────────────────────────────────────
-          - name: Java 17
+          # Java SDK ────────────────────────────────────────
+          - name: "Java 17"
             os: ubuntu-latest
             job: java
             java: '17'
@@ -81,7 +82,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Rust tests ─────────────────────────────────────────
+      # ── Rust ──────────────────────────────────────────────
       - name: Install Rust toolchain
         if: matrix.job == 'rust'
         uses: dtolnay/rust-toolchain@stable
@@ -93,66 +94,64 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            IncodeSDK/target
-          key: ${{ matrix.os }}-cargo-test-${{ hashFiles('IncodeSDK/Cargo.lock') }}
+            target
+          key: ${{ matrix.os }}-cargo-test-${{ hashFiles('Cargo.lock') }}
 
-      - name: Run Rust unit tests
+      - name: Rust — cargo check + unit tests
         if: matrix.job == 'rust'
-        working-directory: IncodeSDK
-        # cargo check verifies the FFI + dynamic loader compiles cleanly.
-        # cargo test --lib runs unit tests that do NOT require the native DLL.
+        # cargo test --lib runs unit tests that do NOT require the native DLL
         run: |
           cargo check
           cargo test --lib -- --test-threads=1
 
-      # ── Node.js tests ──────────────────────────────────────
+      # ── Node.js ───────────────────────────────────────────
       - name: Setup Node.js
         if: matrix.job == 'nodejs'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
 
-      - name: Install Node.js dependencies
+      - name: Node.js — install dependencies
         if: matrix.job == 'nodejs'
-        working-directory: IncodeSDK/nodejs
+        working-directory: nodejs
         run: npm ci
 
-      - name: Lint & syntax-check Node.js SDK
+      - name: Node.js — syntax check + tests
         if: matrix.job == 'nodejs'
-        working-directory: IncodeSDK/nodejs
+        working-directory: nodejs
+        shell: bash
         run: |
           node --check index.js
-          # Run tests if a test script is present
-          if [ -f package.json ] && node -e "require('./package.json').scripts.test" 2>/dev/null; then
+          if node -e "const p=require('./package.json'); process.exit(p.scripts&&p.scripts.test?0:1)" 2>/dev/null; then
             npm test
           else
-            echo "No test script — syntax check passed ✅"
+            echo "No test script found — syntax check passed ✅"
           fi
 
-      # ── Python tests ───────────────────────────────────────
+      # ── Python ────────────────────────────────────────────
       - name: Setup Python
         if: matrix.job == 'python'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install Python build tools
+      - name: Python — install build tools
         if: matrix.job == 'python'
         run: pip install build pytest
 
-      - name: Build & check Python SDK
+      - name: Python — build + test
         if: matrix.job == 'python'
-        working-directory: IncodeSDK/python
+        working-directory: python
+        shell: bash
         run: |
           python -m build
-          # Run pytest if tests exist
           if [ -d tests ]; then
             pytest tests/ -v
           else
-            echo "No tests directory — build passed ✅"
+            echo "No tests dir — build passed ✅"
           fi
 
-      # ── Java tests ─────────────────────────────────────────
+      # ── Java ──────────────────────────────────────────────
       - name: Setup JDK
         if: matrix.job == 'java'
         uses: actions/setup-java@v4
@@ -160,58 +159,56 @@ jobs:
           java-version: ${{ matrix.java }}
           distribution: 'temurin'
 
-      - name: Build & test Java SDK
+      - name: Java — compile + test
         if: matrix.job == 'java'
-        working-directory: IncodeSDK/java
+        working-directory: java
         run: |
           mvn compile
-          # Run tests (skip if none configured)
-          mvn test -Dsurefire.failIfNoSpecifiedTests=false || echo "No Java tests — compile passed ✅"
+          mvn test -Dsurefire.failIfNoSpecifiedTests=false || echo "No tests — compile passed ✅"
 
 # ─────────────────────────────────────────────────────────────
-# JOB 2 — BUILD NATIVE LIBRARIES (only after ALL tests pass)
+# JOB 2 — BUILD NATIVE LIBRARY
+# Runs only after ALL test jobs pass.
 # ─────────────────────────────────────────────────────────────
   build:
-    name: Build DLL (${{ matrix.asset_name }})
-    needs: test          # ← GATE: will NOT run if any test job fails
+    name: Build — ${{ matrix.asset_name }}
+    needs: test
     strategy:
-      fail-fast: false   # Build all platforms even if one fails
+      fail-fast: false
       matrix:
         include:
-          # ── Windows x64 — static CRT so no vcruntime needed ──
+          # Windows x64 — static CRT embedded (no vcruntime140 needed)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            # The lib crate-name is `overdrive_db`, so output is overdrive_db.dll
             built_name: overdrive_db.dll
             asset_name: overdrive-windows-x64.dll
-            # Static CRT: embed coreCRT/vcruntime into the DLL itself
-            rustflags: -C target-feature=+crt-static
+            rustflags: "-C target-feature=+crt-static"
 
-          # ── Linux x64 ─────────────────────────────────────
+          # Linux x64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             built_name: liboverdrive_db.so
             asset_name: liboverdrive-linux-x64.so
-            rustflags: ''
+            rustflags: ""
 
-          # ── macOS ARM64 (Apple Silicon) ────────────────────
+          # macOS ARM64 (Apple Silicon)
           - os: macos-latest
             target: aarch64-apple-darwin
             built_name: liboverdrive_db.dylib
             asset_name: liboverdrive-macos-arm64.dylib
-            rustflags: ''
+            rustflags: ""
 
-          # ── macOS x64 (Intel) ─────────────────────────────
+          # macOS x64 (Intel)
           - os: macos-latest
             target: x86_64-apple-darwin
             built_name: liboverdrive_db.dylib
             asset_name: liboverdrive-macos-x64.dylib
-            rustflags: ''
+            rustflags: ""
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout source (private repo)
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
@@ -225,52 +222,50 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            IncodeSDK/target
-          key: ${{ matrix.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('IncodeSDK/Cargo.lock') }}
+            target
+          key: ${{ matrix.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('Cargo.lock') }}
 
       - name: Build release cdylib
-        working-directory: IncodeSDK
         env:
           RUSTFLAGS: ${{ matrix.rustflags }}
         run: cargo build --release --target ${{ matrix.target }}
 
-      # Rename the output to the expected name (overdrive.dll / liboverdrive.so / .dylib)
       - name: Stage artifact
         shell: bash
         run: |
           mkdir -p dist
-          src="IncodeSDK/target/${{ matrix.target }}/release/${{ matrix.built_name }}"
+          src="target/${{ matrix.target }}/release/${{ matrix.built_name }}"
 
           if [ ! -f "$src" ]; then
-            echo "❌ Expected build output not found: $src"
-            echo "Contents of release dir:"
-            ls -la "IncodeSDK/target/${{ matrix.target }}/release/" || true
+            echo "❌ Build output not found: $src"
+            ls -la "target/${{ matrix.target }}/release/" || true
             exit 1
           fi
 
           cp "$src" "dist/${{ matrix.asset_name }}"
           echo "✅ Staged: dist/${{ matrix.asset_name }} ($(du -sh dist/${{ matrix.asset_name }} | cut -f1))"
 
-      # Also produce a generic name (overdrive.dll) for consumers that need it
-      - name: Produce generic name alias (Windows only)
+      # Produce a generic overdrive.dll alias on Windows so consumers can use either name
+      - name: Produce overdrive.dll alias (Windows only)
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
           cp "dist/${{ matrix.asset_name }}" "dist/overdrive.dll"
           echo "✅ Also staged: dist/overdrive.dll"
 
-      - name: Upload build artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
           path: dist/
 
 # ─────────────────────────────────────────────────────────────
-# JOB 3 — CREATE GITHUB RELEASE ON PUBLIC SDK REPO
+# JOB 3 — CREATE GITHUB RELEASE
+# Runs only after ALL builds succeed.
 # ─────────────────────────────────────────────────────────────
   release:
-    name: Create SDK Release
-    needs: build          # ← Only runs after all builds succeed
+    name: Create Release
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -285,35 +280,29 @@ jobs:
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Download all build artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
 
-      - name: Flatten all artifacts into dist/
+      - name: Flatten into dist/
         run: |
           mkdir -p dist
           find artifacts/ -type f | while read f; do
-            filename=$(basename "$f")
-            cp "$f" "dist/$filename"
-            echo "  ✅ $filename"
+            cp "$f" "dist/$(basename $f)"
           done
-          echo ""
-          echo "=== dist/ contents ==="
+          echo "=== dist/ ==="
           ls -lah dist/
 
       - name: Generate SHA-256 checksums
         run: |
           cd dist
-          sha256sum *.dll *.so *.dylib > checksums-sha256.txt 2>/dev/null || true
-          echo ""
-          echo "=== Checksums ==="
+          sha256sum $(ls *.dll *.so *.dylib 2>/dev/null) > checksums-sha256.txt || true
           cat checksums-sha256.txt
 
-      - name: Create release on PUBLIC SDK repo
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          repository: ${{ env.SDK_REPO }}
           tag_name: ${{ steps.version.outputs.tag }}
           name: "${{ steps.version.outputs.tag }} — OverDrive InCode SDK"
           body: |
@@ -327,40 +316,25 @@ jobs:
 
             ### 📦 Downloads
 
-            | File | Platform | Architecture | Notes |
-            |---|---|---|---|
-            | `overdrive-windows-x64.dll` | Windows | x86_64 | Static CRT (no vcruntime needed) |
-            | `overdrive.dll` | Windows | x86_64 | Generic alias (same file) |
-            | `liboverdrive-linux-x64.so` | Linux | x86_64 | |
-            | `liboverdrive-macos-arm64.dylib` | macOS | ARM64 (Apple Silicon) | |
-            | `liboverdrive-macos-x64.dylib` | macOS | Intel x64 | |
-
-            ---
-
-            ### 🚀 Quick Start
-
-            ```powershell
-            # Windows — download and place next to your app
-            Invoke-WebRequest -Uri "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest/download/overdrive.dll" -OutFile "overdrive.dll"
-            ```
-
-            ```bash
-            # Linux
-            curl -L https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest/download/liboverdrive-linux-x64.so -o liboverdrive.so
-            ```
+            | File | Platform | Notes |
+            |---|---|---|
+            | `overdrive.dll` | Windows x64 | Generic name — use this with `overdrive-db` crate |
+            | `overdrive-windows-x64.dll` | Windows x64 | Static CRT embedded (no vcruntime140 needed) |
+            | `liboverdrive-linux-x64.so` | Linux x64 | |
+            | `liboverdrive-macos-arm64.dylib` | macOS ARM64 (Apple Silicon) | |
+            | `liboverdrive-macos-x64.dylib` | macOS Intel x64 | |
 
             ---
 
             ### 🔐 Checksums (SHA-256)
-            See `checksums-sha256.txt` attached below.
+            See `checksums-sha256.txt` below.
 
-            ### 📖 Documentation
-            - [Quick Start Guide](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/quickstart.md)
+            ### 📖 Docs
+            - [Quick Start](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/quickstart.md)
             - [API Reference](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/api-reference.md)
-            - [SQL Reference](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/sql-guide.md)
           files: |
-            dist/overdrive-windows-x64.dll
             dist/overdrive.dll
+            dist/overdrive-windows-x64.dll
             dist/liboverdrive-linux-x64.so
             dist/liboverdrive-macos-arm64.dylib
             dist/liboverdrive-macos-x64.dylib
@@ -368,4 +342,4 @@ jobs:
           token: ${{ secrets.SDK_RELEASE_TOKEN }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: false   # Don't fail if a platform build was skipped
+          fail_on_unmatched_files: false
