@@ -17,17 +17,11 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Verify package identity
+      - name: Publish to npm
         working-directory: nodejs
         run: |
           echo "Package: $(node -p \"require('./package.json').name\")"
           echo "Version: $(node -p \"require('./package.json').version\")"
-          npm whoami
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish to npm
-        working-directory: nodejs
-        run: npm publish --access public
+          npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
