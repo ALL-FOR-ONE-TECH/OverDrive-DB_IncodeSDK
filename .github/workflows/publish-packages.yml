@@ -1,17 +1,15 @@
-# Publish SDK packages to PyPI and npm
-#
-# Triggered by the sdk-release workflow after binaries are uploaded,
-# or manually via workflow_dispatch.
-
 name: Publish SDK Packages
+
+# Manual trigger — publish specific packages to PyPI and/or npm.
+# For a full release (build + test + publish), use sdk-release.yml instead.
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g. 1.0.1)'
+        description: 'Version to publish (e.g. 1.4.0)'
         required: true
-        default: '1.0.1'
+        default: '1.4.0'
       publish_pypi:
         description: 'Publish to PyPI'
         type: boolean
@@ -20,6 +18,10 @@ on:
         description: 'Publish to npm'
         type: boolean
         default: true
+      publish_maven:
+        description: 'Publish to GitHub Packages (Java)'
+        type: boolean
+        default: false
 
 jobs:
   # ─────────────────────────────────────────────
@@ -29,34 +31,33 @@ jobs:
     if: ${{ github.event.inputs.publish_pypi == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install build tools
-        run: pip install build twine
-
-      - name: Update version
+      - name: Update version in pyproject.toml
+        working-directory: python
         run: |
-          cd IncodeSDK/python
-          sed -i 's/version = ".*"/version = "${{ github.event.inputs.version }}"/' pyproject.toml
+          sed -i 's/^version = ".*"/version = "${{ github.event.inputs.version }}"/' pyproject.toml
+          echo "Version set to: $(grep '^version' pyproject.toml)"
 
       - name: Build package
+        working-directory: python
         run: |
-          cd IncodeSDK/python
+          pip install build
           python -m build
 
       - name: Publish to PyPI
+        working-directory: python
+        run: |
+          pip install twine
+          twine upload dist/* --skip-existing
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          cd IncodeSDK/python
-          twine upload dist/*
 
   # ─────────────────────────────────────────────
   # Publish Node.js SDK to npm
@@ -65,26 +66,50 @@ jobs:
     if: ${{ github.event.inputs.publish_npm == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Update version
-        run: |
-          cd IncodeSDK/nodejs
-          npm version ${{ github.event.inputs.version }} --no-git-tag-version
-
-      - name: Copy LICENSE
-        run: cp IncodeSDK/LICENSE IncodeSDK/nodejs/LICENSE 2>/dev/null || true
+      - name: Update version in package.json
+        working-directory: nodejs
+        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version
 
       - name: Publish to npm
+        working-directory: nodejs
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          cd IncodeSDK/nodejs
-          npm publish --access public
+
+  # ─────────────────────────────────────────────
+  # Publish Java SDK to GitHub Packages
+  # ─────────────────────────────────────────────
+  publish-maven:
+    if: ${{ github.event.inputs.publish_maven == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          server-id: github
+          settings-path: java
+
+      - name: Update version in pom.xml
+        working-directory: java
+        run: mvn -B versions:set -DnewVersion=${{ github.event.inputs.version }} -DgenerateBackupPoms=false
+
+      - name: Publish with Maven
+        working-directory: java
+        run: mvn -B deploy -s settings.xml -DskipTests -Dgpg.skip=true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

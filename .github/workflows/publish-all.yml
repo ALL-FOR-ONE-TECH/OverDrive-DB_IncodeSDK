@@ -1,90 +1,75 @@
-name: Publish All SDKs — v1.3.0
+name: Publish All SDKs — v1.4
 
-# Triggered by pushing a version tag: git tag v1.3.0 && git push --tags
+# Manual trigger or tag push.
+# For a full release (build + test + publish), use sdk-release.yml instead.
+# This workflow is for re-publishing packages without rebuilding native libs.
+
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:  # Allow manual trigger from GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.4.0)'
+        required: false
+        default: ''
 
-# ── Shared retry / timeout defaults ──────────────────────
 defaults:
   run:
-    # All runs get 3 retries via the step-level retry action
     shell: bash
 
 jobs:
-  # ─── npm ───────────────────────────────────────────────
+  # ─── npm ───────────────────────────────────────────────────
   publish-npm:
     name: Publish to npm
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - name: Checkout (with retry)
-        uses: actions/checkout@v4
-        # Retry up to 3 times on network errors (502, timeout etc.)
+      - uses: actions/checkout@v4
         timeout-minutes: 5
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Publish to npm
-        # root of this repo IS the IncodeSDK — subdirs are nodejs/, python/ etc.
         working-directory: nodejs
-        run: npm publish --access public
+        run: |
+          echo "Package: $(node -p \"require('./package.json').name\")"
+          echo "Version: $(node -p \"require('./package.json').version\")"
+          npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # ─── PyPI ──────────────────────────────────────────────
+  # ─── PyPI ──────────────────────────────────────────────────
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         timeout-minutes: 5
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-
-      - name: Install build tools
-        run: pip install build twine
+          python-version: '3.12'
 
       - name: Build and publish
         working-directory: python
         run: |
+          pip install build twine
           python -m build
-          twine upload dist/*
+          twine upload dist/* --skip-existing
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
 
-  # ─── crates.io ─────────────────────────────────────────
-  publish-crates-io:
-    name: Publish to crates.io
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        timeout-minutes: 5
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        # NOTE: if this 502s, re-run the workflow from GitHub Actions UI
-
-      - name: Publish
-        # Cargo.toml is in the repo root (IncodeSDK ≡ repo root)
-        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} --allow-dirty
-
-  # ─── Java / Maven → GitHub Packages ───────────────────
-  publish-github-packages:
+  # ─── Java / Maven → GitHub Packages ───────────────────────
+  publish-maven:
     name: Publish to GitHub Packages (Java)
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -92,56 +77,39 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         timeout-minutes: 5
 
-      - name: Set up JDK 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           server-id: github
-          settings-path: java   # reads java/settings.xml
+          settings-path: java
 
       - name: Publish with Maven
         working-directory: java
-        run: mvn deploy -s settings.xml -DskipTests -Dgpg.skip=true
+        run: mvn -B deploy -s settings.xml -DskipTests -Dgpg.skip=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ─── Native library (liboverdrive) build ──────────────
-  build-native-linux:
-    name: Build native library (Linux x64)
+  # ─── crates.io ─────────────────────────────────────────────
+  publish-crates-io:
+    name: Publish to crates.io
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         timeout-minutes: 5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Add Linux x64 target
-        run: rustup target add x86_64-unknown-linux-gnu
+      - name: Publish
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} --allow-dirty
 
-      - name: Install cross-compile deps
-        run: sudo apt-get update && sudo apt-get install -y gcc-x86-64-linux-gnu
-
-      - name: Build release library
-        # Cargo.toml is at repo root — no cd needed
-        run: cargo build --release --target x86_64-unknown-linux-gnu
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: x86_64-linux-gnu-gcc
-
-      - name: Upload liboverdrive.so
-        uses: actions/upload-artifact@v4
-        with:
-          name: liboverdrive-linux-x64
-          path: target/x86_64-unknown-linux-gnu/release/liboverdrive.so
-
-  # ─── Docs ──────────────────────────────────────────────
+  # ─── Documentation ─────────────────────────────────────────
   deploy-docs:
     name: Deploy Documentation Site
     runs-on: ubuntu-latest
@@ -151,8 +119,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         timeout-minutes: 5
 
       - name: Upload to GitHub Pages
@@ -161,5 +128,4 @@ jobs:
           path: 'docs-site/'
 
       - name: Deploy to GitHub Pages
-        id: deployment
         uses: actions/deploy-pages@v4

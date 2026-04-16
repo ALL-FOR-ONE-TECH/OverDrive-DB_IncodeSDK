@@ -302,7 +302,7 @@ pub unsafe extern "C" fn overdrive_free_string(ptr: *mut c_char) {
 #[no_mangle]
 pub extern "C" fn overdrive_version() -> *const c_char {
     // Static string, no need to free
-    b"1.2.0\0".as_ptr() as *const c_char
+    b"1.4.0\0".as_ptr() as *const c_char
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

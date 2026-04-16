@@ -1,432 +1,969 @@
+﻿<!-- OverDrive-DB Developer Guide v1.4 -->
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Developer Guide | OverDrive-DB Documentation</title>
-
-    <!-- SEO Meta Tags -->
-    <meta name="description"
-        content="Comprehensive developer guide for OverDrive-DB. Installation, connection, and CRUD examples for Rust, Go, Python, Node.js, and Java.">
-    <meta name="keywords"
-        content="overdrive-db guide, developer documentation, go sdk, rust sdk, python sdk, nodejs sdk, java sdk, embedded database">
-    <link rel="canonical" href="https://all-for-one-tech.github.io/OverDrive-DB_SDK/guide.html">
-
-    <!-- Open Graph -->
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://all-for-one-tech.github.io/OverDrive-DB_SDK/guide.html">
-    <meta property="og:title" content="Developer Guide | OverDrive-DB Documentation">
-    <meta property="og:description"
-        content="One-stop shop for OverDrive-DB SDKs. Installation and usage for Rust, Go, Python, and more.">
-    <meta property="og:image" content="https://all-for-one-tech.github.io/OverDrive-DB_SDK/assets/logo.ico">
-
-    <link rel="icon" type="image/x-icon" href="assets/logo.ico">
-
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
-        rel="stylesheet">
-
-    <style>
-        :root {
-            --bg: #ffffff;
-            --sidebar-bg: #f6f8fa;
-            --text: #1f2328;
-            --text-dim: #656d76;
-            --primary: #ff8c00;
-            --border: #d0d7de;
-            --code-bg: #f6f8fa;
-            --link: #0969da;
-            --accent: #fff8eb;
-        }
-
-        [data-theme="dark"] {
-            --bg: #0d1117;
-            --sidebar-bg: #010409;
-            --text: #e6edf3;
-            --text-dim: #7d8590;
-            --primary: #ff8c00;
-            --border: #30363d;
-            --code-bg: #161b22;
-            --link: #4493f8;
-            --accent: #161b22;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            display: flex;
-            min-height: 100vh;
-        }
-
-        /* Sidebar */
-        aside {
-            width: 300px;
-            background: var(--sidebar-bg);
-            border-right: 1px solid var(--border);
-            padding: 2rem 1.5rem;
-            position: sticky;
-            top: 0;
-            height: 100vh;
-            overflow-y: auto;
-        }
-
-        .sidebar-logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 700;
-            font-size: 1.2rem;
-            color: var(--text);
-            text-decoration: none;
-            margin-bottom: 2rem;
-        }
-
-        .sidebar-logo img {
-            width: 24px;
-            height: 24px;
-        }
-
-        .nav-group {
-            margin-bottom: 2rem;
-        }
-
-        .nav-group h4 {
-            font-size: 0.85rem;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 0.75rem;
-            padding-left: 0.5rem;
-        }
-
-        .nav-link {
-            display: block;
-            padding: 0.5rem 0.75rem;
-            color: var(--text);
-            text-decoration: none;
-            font-size: 0.95rem;
-            border-radius: 6px;
-            transition: all 0.2s;
-        }
-
-        .nav-link:hover {
-            background: var(--border);
-        }
-
-        .nav-link.active {
-            background: var(--accent);
-            color: var(--primary);
-            font-weight: 600;
-        }
-
-        /* Main Content */
-        main {
-            flex: 1;
-            padding: 4rem 10% 8rem 5%;
-            max-width: 1000px;
-        }
-
-        section {
-            margin-bottom: 5rem;
-            scroll-margin-top: 5rem;
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 1rem;
-        }
-
-        h2 {
-            font-size: 1.8rem;
-            margin-bottom: 1.5rem;
-            margin-top: 3rem;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 0.5rem;
-        }
-
-        h3 {
-            font-size: 1.3rem;
-            margin-bottom: 1rem;
-            margin-top: 2rem;
-        }
-
-        p {
-            margin-bottom: 1.2rem;
-            line-height: 1.6;
-            color: var(--text-dim);
-        }
-
-        strong {
-            color: var(--text);
-        }
-
-        code {
-            font-family: 'JetBrains Mono', monospace;
-            background: var(--code-bg);
-            padding: 0.2rem 0.4rem;
-            border-radius: 4px;
-            font-size: 0.9em;
-        }
-
-        pre {
-            background: var(--code-bg);
-            border: 1px solid var(--border);
-            padding: 1.5rem;
-            border-radius: 8px;
-            overflow-x: auto;
-            margin-bottom: 1.5rem;
-        }
-
-        pre code {
-            padding: 0;
-            background: none;
-            color: var(--text);
-            line-height: 1.5;
-        }
-
-        .alert {
-            padding: 1rem 1.5rem;
-            background: var(--accent);
-            border-left: 4px solid var(--primary);
-            border-radius: 6px;
-            margin-bottom: 1.5rem;
-        }
-
-        .alert p {
-            margin-bottom: 0;
-            color: var(--text);
-            font-size: 0.95rem;
-        }
-
-        /* Language Switcher */
-        .lang-tabs {
-            display: flex;
-            gap: 10px;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 1.5rem;
-        }
-
-        .lang-tab {
-            padding: 0.5rem 1rem;
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            color: var(--text-dim);
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        .lang-tab.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
-        }
-
-        .lang-content {
-            display: none;
-        }
-
-        .lang-content.active {
-            display: block;
-        }
-
-        @media (max-width: 900px) {
-            aside {
-                display: none;
-            }
-
-            main {
-                padding: 2rem;
-            }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Developer Guide | OverDrive-DB v1.4 Documentation</title>
+<meta name="description" content="Complete developer guide for OverDrive-DB v1.4. Installation, quick start, SQL reference, storage engines, transactions, security, and SDK guides for Python, Node.js, Java, Go, Rust, C.">
+<link rel="canonical" href="https://all-for-one-tech.github.io/OverDrive-DB_IncodeSDK/guide.html">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://all-for-one-tech.github.io/OverDrive-DB_IncodeSDK/guide.html">
+<meta property="og:title" content="Developer Guide | OverDrive-DB Documentation">
+<meta property="og:description" content="Complete guide for OverDrive-DB SDKs. Python, Node.js, Java, Go, Rust, C.">
+<link rel="icon" type="image/x-icon" href="assets/logo.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d1117;--sb:#010409;--text:#e6edf3;--dim:#7d8590;--primary:#ff8c00;--border:#30363d;--code:#161b22;--link:#4493f8;--accent:#161b22;--green:#3fb950}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh}
+aside{width:280px;background:var(--sb);border-right:1px solid var(--border);padding:1.5rem 1.2rem;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0}
+.sb-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:1.1rem;color:var(--text);text-decoration:none;margin-bottom:1.8rem}
+.sb-logo img{width:22px;height:22px}
+.vb{background:rgba(255,140,0,.15);border:1px solid rgba(255,140,0,.3);color:var(--primary);padding:.1rem .4rem;border-radius:4px;font-size:.7rem;font-weight:700;margin-left:4px}
+.ng{margin-bottom:1.6rem}
+.ng h4{font-size:.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.6rem;padding-left:.4rem}
+.nl{display:block;padding:.4rem .6rem;color:var(--text);text-decoration:none;font-size:.88rem;border-radius:5px;transition:all .15s}
+.nl:hover{background:var(--border)}
+.nl.active{background:var(--accent);color:var(--primary);font-weight:600}
+main{flex:1;padding:3rem 6% 6rem 4%;max-width:960px;min-width:0}
+section{margin-bottom:4.5rem;scroll-margin-top:4rem}
+h1{font-size:2.2rem;margin-bottom:.8rem;border-bottom:1px solid var(--border);padding-bottom:.8rem}
+h2{font-size:1.6rem;margin-bottom:1.2rem;margin-top:2.5rem;border-bottom:1px solid var(--border);padding-bottom:.4rem}
+h3{font-size:1.15rem;margin-bottom:.8rem;margin-top:1.8rem;color:var(--text)}
+p{margin-bottom:1rem;line-height:1.65;color:var(--dim)}
+strong{color:var(--text)}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:var(--code);padding:.15rem .35rem;border-radius:3px;font-size:.85em;color:#e6edf3}
+pre{background:var(--code);border:1px solid var(--border);padding:1.3rem 1.5rem;border-radius:8px;overflow-x:auto;margin-bottom:1.3rem;line-height:1.6}
+pre code{padding:0;background:none;font-size:.85rem;color:#d1d5db}
+.alert{padding:.9rem 1.3rem;background:rgba(255,140,0,.08);border-left:3px solid var(--primary);border-radius:5px;margin-bottom:1.2rem}
+.alert p{margin-bottom:0;color:var(--text);font-size:.9rem}
+.alert.info{background:rgba(68,147,248,.08);border-left-color:var(--link)}
+.ltabs{display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:1.2rem;flex-wrap:wrap}
+.lt{padding:.4rem .9rem;cursor:pointer;border-bottom:2px solid transparent;color:var(--dim);font-weight:600;font-size:.85rem;transition:all .15s}
+.lt.active{color:var(--primary);border-bottom-color:var(--primary)}
+.lc{display:none}
+.lc.active{display:block}
+table{width:100%;border-collapse:collapse;margin-bottom:1.3rem;font-size:.88rem}
+th{background:var(--code);padding:.6rem .9rem;text-align:left;border:1px solid var(--border);font-weight:600;color:var(--text)}
+td{padding:.55rem .9rem;border:1px solid var(--border);color:var(--dim)}
+tr:hover td{background:rgba(255,255,255,.02)}
+.badge{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.75rem;font-weight:700;margin-right:.3rem}
+.badge-new{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+.badge-v13{background:rgba(68,147,248,.12);color:var(--link);border:1px solid rgba(68,147,248,.25)}
+.toc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.8rem;margin:1.5rem 0}
+.toc-item{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:.9rem 1.1rem;text-decoration:none;color:var(--text);transition:all .2s;display:block}
+.toc-item:hover{border-color:var(--primary);text-decoration:none}
+.toc-item .num{font-size:.75rem;color:var(--primary);font-weight:700;margin-bottom:.2rem}
+.toc-item .name{font-size:.9rem;font-weight:600}
+.toc-item .desc{font-size:.78rem;color:var(--dim);margin-top:.2rem}
+@media(max-width:900px){aside{display:none}main{padding:2rem}}
+</style>
 </head>
+<body>
+<aside>
+  <a href="index.html" class="sb-logo">
+    <img src="assets/logo.ico" alt="Logo">
+    OverDrive-DB<span class="vb">v1.4</span>
+  </a>
+  <div class="ng">
+    <h4>Getting Started</h4>
+    <a href="#overview" class="nl active">Overview</a>
+    <a href="#install" class="nl">Installation</a>
+    <a href="#quickstart" class="nl">Quick Start</a>
+    <a href="#concepts" class="nl">Core Concepts</a>
+  </div>
+  <div class="ng">
+    <h4>Features</h4>
+    <a href="#engines" class="nl">Storage Engines</a>
+    <a href="#transactions" class="nl">Transactions</a>
+    <a href="#helpers" class="nl">Helper Methods</a>
+    <a href="#security" class="nl">Security</a>
+    <a href="#watchdog" class="nl">Watchdog</a>
+  </div>
+  <div class="ng">
+    <h4>SDK Guides</h4>
+    <a href="#python" class="nl">Python</a>
+    <a href="#nodejs" class="nl">Node.js</a>
+    <a href="#java" class="nl">Java</a>
+    <a href="#go" class="nl">Go</a>
+    <a href="#rust" class="nl">Rust</a>
+    <a href="#c" class="nl">C / C++</a>
+  </div>
+  <div class="ng">
+    <h4>Reference</h4>
+    <a href="#sql" class="nl">SQL Reference</a>
+    <a href="#errors" class="nl">Error Codes</a>
+    <a href="#migration" class="nl">Migration v1.3→v1.4</a>
+  </div>
+</aside>
+<main>
 
-<body data-theme="dark">
-    <aside>
-        <a href="index.html" class="sidebar-logo">
-            <img src="assets/logo.ico" alt="Logo">
-            OverDrive-DB
-        </a>
+<section id="overview">
+<h1>Developer Guide <span class="badge badge-new">v1.4</span></h1>
+<p>Welcome to the complete OverDrive-DB developer guide. This page covers everything from installation to advanced features.</p>
+<div class="alert">
+  <p><strong>OverDrive-DB is serverless.</strong> Your database is a single <code>.odb</code> file. No daemon, no network, no config. Import the library and go.</p>
+</div>
+<div class="toc-grid">
+  <a href="#install" class="toc-item"><div class="num">01</div><div class="name">Installation</div><div class="desc">pip, npm, go get, Maven, Cargo</div></a>
+  <a href="#quickstart" class="toc-item"><div class="num">02</div><div class="name">Quick Start</div><div class="desc">Open, insert, query in 3 lines</div></a>
+  <a href="#engines" class="toc-item"><div class="num">03</div><div class="name">Storage Engines</div><div class="desc">Disk, RAM, Vector, Time-Series, Graph, Streaming</div></a>
+  <a href="#transactions" class="toc-item"><div class="num">04</div><div class="name">Transactions</div><div class="desc">MVCC, callback pattern, retry</div></a>
+  <a href="#security" class="toc-item"><div class="num">05</div><div class="name">Security</div><div class="desc">Passwords, encryption, SQL injection</div></a>
+  <a href="#sql" class="toc-item"><div class="num">06</div><div class="name">SQL Reference</div><div class="desc">SELECT, WHERE, aggregations, DDL</div></a>
+  <a href="#errors" class="toc-item"><div class="num">07</div><div class="name">Error Codes</div><div class="desc">ODB-AUTH, ODB-TABLE, ODB-TXN...</div></a>
+  <a href="#migration" class="toc-item"><div class="num">08</div><div class="name">Migration Guide</div><div class="desc">Upgrading from v1.3 to v1.4</div></a>
+</div>
+</section>
 
-        <div class="nav-group">
-            <h4>Getting Started</h4>
-            <a href="#overview" class="nav-link active">Overview</a>
-            <a href="#installation" class="nav-link">Installation</a>
-            <a href="#quickstart" class="nav-link">Quick Start</a>
-        </div>
-
-        <div class="nav-group">
-            <h4>SDK Guides</h4>
-            <a href="#rust" class="nav-link">Rust</a>
-            <a href="#go" class="nav-link">Go (Prominent)</a>
-            <a href="#nodejs" class="nav-link">Node.js</a>
-            <a href="#python" class="nav-link">Python</a>
-            <a href="#java" class="nav-link">Java</a>
-        </div>
-
-        <div class="nav-group">
-            <h4>Advanced</h4>
-            <a href="#sql" class="nav-link">SQL Queries</a>
-            <a href="#search" class="nav-link">Full-Text Search</a>
-        </div>
-    </aside>
-
-    <main>
-        <section id="overview">
-            <h1>Developer Guide</h1>
-            <p>Welcome to the <strong>OverDrive-DB</strong> developer portal. This guide will help you integrate the
-                World's Fastest Embeddable Hybrid Database into your applications.</p>
-            <div class="alert">
-                <p><strong>Note:</strong> OverDrive-DB is serverless. Your database is stored in a single
-                    <code>.odb</code> file, much like SQLite, but optimized for JSON documents.
-                </p>
-            </div>
-        </section>
-
-        <section id="installation">
-            <h2>Global Installation</h2>
-            <p>Choose your preferred language and install the SDK from your native registry.</p>
-
-            <div class="lang-tabs" id="install-tabs">
-                <div class="lang-tab active" data-lang="go">Go</div>
-                <div class="lang-tab" data-lang="rust">Rust</div>
-                <div class="lang-tab" data-lang="nodejs">Node.js</div>
-                <div class="lang-tab" data-lang="python">Python</div>
-                <div class="lang-tab" data-lang="java">Java</div>
-            </div>
-
-            <div class="lang-content active" id="install-go">
-                <p>The Go SDK is fully featured and easy to set up.</p>
-                <pre><code>go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/go</code></pre>
-            </div>
-            <div class="lang-content" id="install-rust">
-                <pre><code>cargo add overdrive-db</code></pre>
-            </div>
-            <div class="lang-content" id="install-nodejs">
-                <pre><code>npm install overdrive-db</code></pre>
-            </div>
-            <div class="lang-content" id="install-python">
-                <pre><code>pip install overdrive-db</code></pre>
-            </div>
-            <div class="lang-content" id="install-java">
-                <p>Add the following dependency to your <code>pom.xml</code>:</p>
-                <pre><code>&lt;dependency&gt;
-  &lt;groupId&gt;com.afot&lt;/groupId&gt;
-  &lt;artifactId&gt;overdrive-db&lt;/artifactId&gt;
-  &lt;version&gt;1.0.1&lt;/version&gt;
+<section id="install">
+<h2>Installation</h2>
+<div class="ltabs" id="install-tabs">
+  <div class="lt active" data-g="install" data-l="py">Python</div>
+  <div class="lt" data-g="install" data-l="js">Node.js</div>
+  <div class="lt" data-g="install" data-l="java">Java</div>
+  <div class="lt" data-g="install" data-l="go">Go</div>
+  <div class="lt" data-g="install" data-l="rust">Rust</div>
+  <div class="lt" data-g="install" data-l="c">C / C++</div>
+</div>
+<div class="lc active" id="install-py">
+<pre><code>pip install overdrive-db</code></pre>
+<p>Requires Python 3.8+. The native library is bundled in the package.</p>
+</div>
+<div class="lc" id="install-js">
+<pre><code>npm install overdrive-db</code></pre>
+<p>Requires Node.js 14+. The native library is bundled in the package.</p>
+</div>
+<div class="lc" id="install-java">
+<pre><code>&lt;dependency&gt;
+    &lt;groupId&gt;com.afot&lt;/groupId&gt;
+    &lt;artifactId&gt;overdrive-db&lt;/artifactId&gt;
+    &lt;version&gt;1.4.0&lt;/version&gt;
 &lt;/dependency&gt;</code></pre>
-            </div>
-        </section>
+<p>Requires Java 11+. Add to your <code>pom.xml</code>.</p>
+</div>
+<div class="lc" id="install-go">
+<pre><code>go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go@v1.4.0</code></pre>
+<p>Requires Go 1.21+. Uses CGo — native library must be in your library path.</p>
+</div>
+<div class="lc" id="install-rust">
+<pre><code># Cargo.toml
+[dependencies]
+overdrive-db = "1.4.0"
+serde_json = "1.0"</code></pre>
+<p>The crate dynamically loads the native library at runtime. Download <code>overdrive.dll</code> / <code>liboverdrive.so</code> / <code>liboverdrive.dylib</code> from <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases/latest">GitHub Releases</a> and place it in your project directory.</p>
+</div>
+<div class="lc" id="install-c">
+<p>Download the C header and native library from <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases/latest">GitHub Releases</a>:</p>
+<pre><code># Linux
+gcc -o myapp myapp.c -L./lib -loverdrive -Wl,-rpath,./lib
 
-        <section id="go">
-            <h2>Go SDK Guide</h2>
-            <p>We've optimized the Go experience to feel native to Gophers. It uses the highest performance CGO bindings
-                for maximum throughput.</p>
-            <h3>Initialize Database</h3>
-            <pre><code>import "github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/go"
+# macOS
+clang -o myapp myapp.c -L./lib -loverdrive
 
-db, err := overdrive.Open("data.odb")
-if err != nil {
-    panic(err)
+# Windows (MSVC)
+cl myapp.c /link /LIBPATH:lib overdrive.dll.lib</code></pre>
+</div>
+</section>
+
+<section id="quickstart">
+<h2>Quick Start</h2>
+<p>Open a database, insert a document, query it. Tables are <strong>auto-created</strong> on first insert — no <code>createTable()</code> needed.</p>
+<div class="ltabs" id="qs-tabs">
+  <div class="lt active" data-g="qs" data-l="py">Python</div>
+  <div class="lt" data-g="qs" data-l="js">Node.js</div>
+  <div class="lt" data-g="qs" data-l="java">Java</div>
+  <div class="lt" data-g="qs" data-l="go">Go</div>
+</div>
+<div class="lc active" id="qs-py">
+<pre><code>from overdrive import OverDrive
+
+# Open or create a database
+db = OverDrive.open("myapp.odb")
+
+# Insert — "users" table auto-created
+id = db.insert("users", {"name": "Alice", "age": 30, "city": "London"})
+print(f"Inserted: {id}")  # users_1
+
+# SQL query
+results = db.query("SELECT * FROM users WHERE age > 25 ORDER BY name")
+for user in results:
+    print(f"  {user['name']} — age {user['age']}")
+
+# Get by ID
+user = db.get("users", id)
+print(user)
+
+# Update
+db.update("users", id, {"age": 31})
+
+# Delete
+db.delete("users", id)
+
+# Count
+print(db.count("users"))  # 0
+
+db.close()</code></pre>
+</div>
+<div class="lc" id="qs-js">
+<pre><code>const { OverDrive } = require('overdrive-db');
+
+const db = OverDrive.open('myapp.odb');
+
+// Insert — "users" table auto-created
+const id = db.insert('users', { name: 'Alice', age: 30, city: 'London' });
+console.log(`Inserted: ${id}`);  // users_1
+
+// SQL query
+const results = db.query('SELECT * FROM users WHERE age > 25 ORDER BY name');
+results.forEach(u => console.log(`  ${u.name} — age ${u.age}`));
+
+// Get, update, delete
+const user = db.get('users', id);
+db.update('users', id, { age: 31 });
+db.delete('users', id);
+console.log(db.count('users'));  // 0
+
+db.close();</code></pre>
+</div>
+<div class="lc" id="qs-java">
+<pre><code>import com.afot.overdrive.OverDrive;
+import java.util.Map;
+
+try (OverDrive db = OverDrive.open("myapp.odb")) {
+    // Insert — "users" table auto-created
+    String id = db.insert("users", Map.of("name", "Alice", "age", 30));
+    System.out.println("Inserted: " + id);  // users_1
+
+    // SQL query
+    var results = db.query("SELECT * FROM users WHERE age > 25");
+    results.forEach(u -> System.out.println("  " + u.get("name")));
+
+    // Get, update, delete
+    var user = db.get("users", id);
+    db.update("users", id, Map.of("age", 31));
+    db.delete("users", id);
+    System.out.println(db.count("users"));  // 0
+}</code></pre>
+</div>
+<div class="lc" id="qs-go">
+<pre><code>import overdrive "github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go"
+
+db, _ := overdrive.Open("myapp.odb")
+defer db.Close()
+
+// Insert — "users" table auto-created
+id, _ := db.Insert("users", map[string]any{"name": "Alice", "age": 30})
+fmt.Printf("Inserted: %s\n", id)  // users_1
+
+// SQL query
+result, _ := db.Query("SELECT * FROM users WHERE age > 25")
+for _, u := range result.Rows {
+    fmt.Printf("  %s — age %v\n", u["name"], u["age"])
 }
-defer db.Close()</code></pre>
 
-            <h3>Insert & Query</h3>
-            <pre><code>db.CreateTable("users")
+// Get, update, delete
+user, _ := db.Get("users", id)
+db.Update("users", id, map[string]any{"age": 31})
+db.Delete("users", id)
+count, _ := db.Count("users")
+fmt.Println(count)  // 0</code></pre>
+</div>
+</section>
 
-user := map[string]interface{}{
-    "name": "Karthik",
-    "role": "Lead Developer",
+<section id="concepts">
+<h2>Core Concepts</h2>
+<h3>The Database File</h3>
+<p>Your entire database lives in <strong>one <code>.odb</code> file</strong>. Copy it = backup. Delete it = gone. Move it = database moves with it.</p>
+<h3>Schemaless Documents</h3>
+<p>Tables have no fixed columns. Each document is a JSON object. Different documents in the same table can have different fields.</p>
+<pre><code># All valid in the same "users" table
+db.insert("users", {"name": "Alice", "age": 30})
+db.insert("users", {"name": "Bob", "email": "bob@example.com", "premium": True})
+db.insert("users", {"name": "Carol", "tags": ["admin"], "score": 9.5})</code></pre>
+<h3>Auto-generated _id</h3>
+<p>Every document gets an <code>_id</code> automatically: <code>users_1</code>, <code>users_2</code>, <code>orders_1</code>, etc.</p>
+<h3>SQL on JSON</h3>
+<p>OverDrive has a built-in SQL engine. Write SQL, it runs on your JSON documents — no schema needed.</p>
+</section>
+
+<section id="engines">
+<h2>Storage Engines</h2>
+<p>OverDrive has 6 storage engines. Pick the right one for your use case.</p>
+<table>
+<tr><th>Engine</th><th>Latency</th><th>Best For</th></tr>
+<tr><td><code>Disk</code> (default)</td><td>~1ms</td><td>General-purpose persistent storage</td></tr>
+<tr><td><code>RAM</code></td><td>&lt;1µs</td><td>Caching, sessions, hot data</td></tr>
+<tr><td><code>Vector</code></td><td>~5ms</td><td>AI embeddings, similarity search</td></tr>
+<tr><td><code>Time-Series</code></td><td>~2ms</td><td>Metrics, IoT, logs</td></tr>
+<tr><td><code>Graph</code></td><td>~3ms</td><td>Social networks, knowledge graphs</td></tr>
+<tr><td><code>Streaming</code></td><td>~1ms</td><td>Event queues, message brokers</td></tr>
+</table>
+<h3>RAM Engine <span class="badge badge-new">v1.4</span></h3>
+<p>Sub-microsecond reads. Full MVCC. Snapshot to disk and restore on startup.</p>
+<div class="ltabs" id="ram-tabs">
+  <div class="lt active" data-g="ram" data-l="py">Python</div>
+  <div class="lt" data-g="ram" data-l="js">Node.js</div>
+</div>
+<div class="lc active" id="ram-py">
+<pre><code># Full RAM database
+cache = OverDrive.open("cache.odb", engine="RAM")
+cache.insert("sessions", {"user_id": 123, "token": "abc"})
+
+# Memory usage
+usage = cache.memoryUsage()
+print(f"Using {usage['mb']:.1f} MB ({usage['percent']:.1f}%)")
+
+# Persist to disk
+cache.snapshot("./backup/cache.odb")
+
+# Restore later
+cache2 = OverDrive.open("cache2.odb", engine="RAM")
+cache2.restore("./backup/cache.odb")
+
+# Per-table RAM in a disk database
+db = OverDrive.open("app.odb")
+db.createTable("sessions", engine="RAM")   # RAM table
+db.insert("users", {"name": "Alice"})      # Disk table (auto-created)</code></pre>
+</div>
+<div class="lc" id="ram-js">
+<pre><code>// Full RAM database
+const cache = OverDrive.open('cache.odb', { engine: 'RAM' });
+cache.insert('sessions', { userId: 123, token: 'abc' });
+
+// Memory usage
+const usage = cache.memoryUsage();
+console.log(`Using ${usage.mb.toFixed(1)} MB (${usage.percent.toFixed(1)}%)`);
+
+// Persist to disk
+cache.snapshot('./backup/cache.odb');
+
+// Per-table RAM in a disk database
+const db = OverDrive.open('app.odb');
+db.createTable('sessions', { engine: 'RAM' });
+db.insert('users', { name: 'Alice' });</code></pre>
+</div>
+</section>
+
+<section id="transactions">
+<h2>Transactions</h2>
+<p>OverDrive uses MVCC (Multi-Version Concurrency Control). Transactions are ACID-compliant.</p>
+<h3>Callback Pattern <span class="badge badge-new">v1.4</span></h3>
+<p>Pass a function — auto-commits on success, auto-rolls back on any exception.</p>
+<div class="ltabs" id="txn-tabs">
+  <div class="lt active" data-g="txn" data-l="py">Python</div>
+  <div class="lt" data-g="txn" data-l="js">Node.js</div>
+  <div class="lt" data-g="txn" data-l="java">Java</div>
+  <div class="lt" data-g="txn" data-l="go">Go</div>
+</div>
+<div class="lc active" id="txn-py">
+<pre><code># Callback pattern — recommended
+def transfer(txn):
+    db.updateMany("accounts", "id = 'alice'", {"balance": 900})
+    db.updateMany("accounts", "id = 'bob'",   {"balance": 600})
+    return "done"
+
+result = db.transaction(transfer)
+
+# With isolation level
+result = db.transaction(transfer, isolation=OverDrive.SERIALIZABLE)
+
+# With retry on conflict
+result = db.transaction_with_retry(transfer, max_retries=3)
+
+# Auto-rollback on exception
+try:
+    def bad(txn):
+        db.insert("orders", {"item": "widget"})
+        raise ValueError("oops")  # triggers rollback
+    db.transaction(bad)
+except ValueError:
+    pass  # insert was rolled back
+
+# Manual pattern (v1.3 — still works)
+txn_id = db.begin_transaction()
+db.insert("users", {"name": "Alice"})
+db.commit_transaction(txn_id)</code></pre>
+</div>
+<div class="lc" id="txn-js">
+<pre><code>// Sync callback
+const result = db.transaction((txn) => {
+    db.updateMany('accounts', "id = 'alice'", { balance: 900 });
+    return 'done';
+});
+
+// Async callback — returns Promise
+const result = await db.transaction(async (txn) => {
+    const id = db.insert('orders', { item: 'widget' });
+    await someExternalCall();
+    return id;
+});
+
+// With retry
+const result = await db.transactionWithRetry(
+    async (txn) => db.insert('orders', { item: 'widget' }),
+    OverDrive.READ_COMMITTED, 3
+);</code></pre>
+</div>
+<div class="lc" id="txn-java">
+<pre><code>// Generic callback — returns any type
+String result = db.transaction(txn -> {
+    db.updateMany("accounts", "id = 'alice'", Map.of("balance", 900));
+    return "done";
+});
+
+// With isolation level
+Integer count = db.transaction(txn -> {
+    db.insert("logs", Map.of("event", "test"));
+    return db.count("logs");
+}, OverDrive.SERIALIZABLE);
+
+// With retry
+String r = db.transactionWithRetry(txn -> {
+    db.insert("orders", Map.of("item", "widget"));
+    return "done";
+}, OverDrive.READ_COMMITTED, 3);</code></pre>
+</div>
+<div class="lc" id="txn-go">
+<pre><code>err := db.Transaction(func(txn *overdrive.TransactionHandle) error {
+    _, err := db.UpdateMany("accounts", "id = 'alice'",
+        map[string]any{"balance": 900})
+    return err
+}, overdrive.ReadCommitted)
+
+// With retry
+err = db.TransactionWithRetry(func(txn *overdrive.TransactionHandle) error {
+    _, err := db.Insert("orders", map[string]any{"item": "widget"})
+    return err
+}, overdrive.ReadCommitted, 3)</code></pre>
+</div>
+<h3>Isolation Levels</h3>
+<table>
+<tr><th>Level</th><th>Constant</th><th>Default</th><th>Use When</th></tr>
+<tr><td>Read Uncommitted</td><td><code>READ_UNCOMMITTED</code> (0)</td><td></td><td>Maximum performance, minimal safety</td></tr>
+<tr><td>Read Committed</td><td><code>READ_COMMITTED</code> (1)</td><td>✓</td><td>Most web apps, APIs</td></tr>
+<tr><td>Repeatable Read</td><td><code>REPEATABLE_READ</code> (2)</td><td></td><td>Reports, analytics</td></tr>
+<tr><td>Serializable</td><td><code>SERIALIZABLE</code> (3)</td><td></td><td>Financial transactions, inventory</td></tr>
+</table>
+</section>
+
+<section id="helpers">
+<h2>Helper Methods <span class="badge badge-new">v1.4</span></h2>
+<p>Convenient wrappers for common patterns. All use the SQL engine internally.</p>
+<pre><code># Python examples (Node.js, Java, Go have identical methods)
+
+db = OverDrive.open("app.odb")
+
+# findOne — first match or None/null
+user = db.findOne("users", "age > 25")
+first = db.findOne("users")  # no filter
+
+# findAll — all matches with optional sorting and limit
+users = db.findAll("users", "age > 25", order_by="name ASC", limit=10)
+
+# updateMany — bulk update, returns count
+count = db.updateMany("users", "status = 'trial'", {"status": "active"})
+print(f"Updated {count} users")
+
+# deleteMany — bulk delete, returns count
+count = db.deleteMany("logs", "created_at &lt; '2025-01-01'")
+
+# countWhere — count matching documents
+n = db.countWhere("users", "age > 25")
+total = db.countWhere("users")  # count all
+
+# exists — check by _id
+found = db.exists("users", "users_1")  # True or False</code></pre>
+</section>
+
+<section id="security">
+<h2>Security</h2>
+<h3>Password-Protected Databases <span class="badge badge-new">v1.4</span></h3>
+<p>AES-256-GCM encryption with Argon2id key derivation (64MB memory, 3 iterations). Minimum 8 characters.</p>
+<div class="alert">
+  <p><strong>Never hardcode passwords.</strong> Always load from environment variables or a secrets manager.</p>
+</div>
+<pre><code># Python
+import os
+db = OverDrive.open("secure.odb", password=os.environ["DB_PASSWORD"])
+
+# Node.js
+const db = OverDrive.open('secure.odb', { password: process.env.DB_PASSWORD });
+
+# Java
+OverDrive db = OverDrive.open("secure.odb",
+    new OverDrive.OpenOptions().password(System.getenv("DB_PASSWORD")));
+
+# Go
+db, _ := overdrive.Open("secure.odb",
+    overdrive.WithPassword(os.Getenv("DB_PASSWORD")))</code></pre>
+
+<h3>SQL Injection Prevention</h3>
+<p>Use <code>querySafe()</code> with <code>?</code> placeholders for any user input.</p>
+<pre><code># Python — SAFE
+results = db.querySafe("SELECT * FROM users WHERE name = ?", user_input)
+results = db.querySafe("SELECT * FROM users WHERE age > ? AND city = ?", "25", "London")
+
+# Node.js — SAFE
+const results = db.querySafe('SELECT * FROM users WHERE name = ?', [userInput]);
+
+# DANGEROUS — never do this
+db.query(f"SELECT * FROM users WHERE name = '{user_input}'")</code></pre>
+
+<h3>Watchdog — File Integrity <span class="badge badge-new">v1.4</span></h3>
+<pre><code># Python
+report = OverDrive.watchdog("app.odb")
+print(report.integrity_status)   # "valid", "corrupted", "missing"
+print(report.file_size_bytes)
+print(report.page_count)
+if report.integrity_status == "corrupted":
+    print(f"Details: {report.corruption_details}")
+
+# Node.js
+const report = OverDrive.watchdog('app.odb');
+console.log(report.integrityStatus);  // "valid", "corrupted", "missing"</code></pre>
+
+<h3>Backup and WAL Cleanup</h3>
+<pre><code># Python
+db.backup("backups/app_2026-04-16.odb")  # encrypted backup
+
+# After commit — prevent WAL replay attacks
+txn_id = db.begin_transaction()
+db.insert("users", {"name": "Alice"})
+db.commit_transaction(txn_id)
+db.cleanup_wal()</code></pre>
+</section>
+
+<section id="python">
+<h2>Python SDK</h2>
+<p><strong>Install:</strong> <code>pip install overdrive-db</code> | Requires Python 3.8+</p>
+<pre><code>from overdrive import OverDrive, WatchdogReport, OverDriveError, AuthenticationError
+
+# Open
+db = OverDrive.open("app.odb")
+db = OverDrive.open("app.odb", password="secret123", engine="Disk", auto_create_tables=True)
+db = OverDrive.open("cache.odb", engine="RAM")
+
+# CRUD
+id = db.insert("users", {"name": "Alice", "age": 30})
+ids = db.insert_many("users", [{"name": "Bob"}, {"name": "Carol"}])
+user = db.get("users", id)          # dict or None
+updated = db.update("users", id, {"age": 31})  # bool
+deleted = db.delete("users", id)    # bool
+count = db.count("users")           # int
+
+# Query
+results = db.query("SELECT * FROM users WHERE age > 25")
+results = db.querySafe("SELECT * FROM users WHERE name = ?", user_input)
+matches = db.search("users", "alice")
+
+# Helpers (v1.4)
+user = db.findOne("users", "age > 25")
+users = db.findAll("users", "age > 25", order_by="name", limit=10)
+n = db.updateMany("users", "status = 'trial'", {"status": "active"})
+n = db.deleteMany("logs", "old = true")
+n = db.countWhere("users", "active = true")
+found = db.exists("users", "users_1")
+
+# Transactions (v1.4)
+result = db.transaction(lambda txn: db.insert("orders", {"item": "widget"}))
+result = db.transaction_with_retry(my_fn, max_retries=3)
+
+# RAM engine (v1.4)
+db.snapshot("./backup.odb")
+db.restore("./backup.odb")
+usage = db.memoryUsage()  # {"bytes", "mb", "limit_bytes", "percent"}
+
+# Watchdog (v1.4)
+report = OverDrive.watchdog("app.odb")
+# report.integrity_status, .file_size_bytes, .page_count, .magic_valid
+
+# Security
+db.backup("backups/app.odb")
+db.cleanup_wal()
+
+# Error handling
+try:
+    db = OverDrive.open("secure.odb", password="wrong")
+except AuthenticationError as e:
+    print(e.code, e.message, e.suggestions)</code></pre>
+</section>
+
+<section id="nodejs">
+<h2>Node.js SDK</h2>
+<p><strong>Install:</strong> <code>npm install overdrive-db</code> | Requires Node.js 14+</p>
+<pre><code>const { OverDrive, SharedOverDrive, OverDriveError, AuthenticationError } = require('overdrive-db');
+
+// Open
+const db = OverDrive.open('app.odb');
+const db = OverDrive.open('app.odb', { password: 'secret123', engine: 'Disk', autoCreateTables: true });
+const cache = OverDrive.open('cache.odb', { engine: 'RAM' });
+
+// CRUD
+const id = db.insert('users', { name: 'Alice', age: 30 });
+const ids = db.insertMany('users', [{ name: 'Bob' }, { name: 'Carol' }]);
+const user = db.get('users', id);          // object or null
+const updated = db.update('users', id, { age: 31 });  // bool
+const deleted = db.delete('users', id);    // bool
+const count = db.count('users');           // number
+
+// Query
+const results = db.query('SELECT * FROM users WHERE age > 25');
+const results = db.querySafe('SELECT * FROM users WHERE name = ?', [userInput]);
+const matches = db.search('users', 'alice');
+
+// Helpers (v1.4)
+const user = db.findOne('users', 'age > 25');
+const users = db.findAll('users', 'age > 25', 'name ASC', 10);
+const n = db.updateMany('users', "status = 'trial'", { status: 'active' });
+const n = db.deleteMany('logs', 'old = true');
+const n = db.countWhere('users', 'active = true');
+const found = db.exists('users', 'users_1');
+
+// Transactions (v1.4)
+const result = db.transaction((txn) => db.insert('orders', { item: 'widget' }));
+const result = await db.transaction(async (txn) => { /* async work */ });
+const result = await db.transactionWithRetry(async (txn) => { /* ... */ }, OverDrive.READ_COMMITTED, 3);
+
+// RAM engine (v1.4)
+db.snapshot('./backup.odb');
+db.restore('./backup.odb');
+const usage = db.memoryUsage();  // { bytes, mb, limit_bytes, percent }
+
+// Watchdog (v1.4)
+const report = OverDrive.watchdog('app.odb');
+// report.integrityStatus, .fileSizeBytes, .pageCount, .magicValid
+
+// Async-safe
+const shared = new SharedOverDrive('app.odb');
+await shared.insert('users', { name: 'Alice' });
+
+// Error handling
+try {
+    OverDrive.open('secure.odb', { password: 'wrong' });
+} catch (e) {
+    if (e instanceof AuthenticationError) console.log(e.code, e.message);
+}</code></pre>
+</section>
+
+<section id="java">
+<h2>Java SDK</h2>
+<p><strong>Install:</strong> Maven dependency <code>com.afot:overdrive-db:1.4.0</code> | Requires Java 11+</p>
+<pre><code>import com.afot.overdrive.OverDrive;
+import com.afot.overdrive.OverDriveException.*;
+
+// Open
+OverDrive db = OverDrive.open("app.odb");
+OverDrive db = OverDrive.open("app.odb", new OverDrive.OpenOptions()
+    .password("secret123").engine("Disk").autoCreateTables(true));
+
+// try-with-resources
+try (OverDrive db = OverDrive.open("app.odb")) {
+    // CRUD
+    String id = db.insert("users", Map.of("name", "Alice", "age", 30));
+    List&lt;String&gt; ids = db.insertMany("users", List.of(Map.of("name", "Bob")));
+    Map&lt;String, Object&gt; user = db.get("users", id);
+    boolean updated = db.update("users", id, Map.of("age", 31));
+    boolean deleted = db.delete("users", id);
+    int count = db.count("users");
+
+    // Query
+    List&lt;Map&lt;String, Object&gt;&gt; results = db.query("SELECT * FROM users WHERE age > 25");
+    List&lt;Map&lt;String, Object&gt;&gt; results = db.querySafe("SELECT * FROM users WHERE name = ?", userName);
+
+    // Helpers (v1.4)
+    Map&lt;String, Object&gt; user = db.findOne("users", "age > 25");
+    List&lt;Map&lt;String, Object&gt;&gt; users = db.findAll("users", "age > 25", "name ASC", 10);
+    int n = db.updateMany("users", "status = 'trial'", Map.of("status", "active"));
+    int n = db.deleteMany("logs", "old = true");
+    int n = db.countWhere("users", "active = true");
+    boolean found = db.exists("users", "users_1");
+
+    // Transactions (v1.4)
+    String result = db.transaction(txn -> {
+        db.insert("orders", Map.of("item", "widget"));
+        return "done";
+    });
+    String result = db.transactionWithRetry(txn -> "done", OverDrive.READ_COMMITTED, 3);
+
+    // RAM engine (v1.4)
+    db.snapshot("./backup.odb");
+    db.restore("./backup.odb");
+    OverDrive.MemoryUsage usage = db.memoryUsage();
+
+    // Watchdog (v1.4)
+    OverDrive.WatchdogReport report = OverDrive.watchdog("app.odb");
+} catch (AuthenticationException e) {
+    System.out.println(e.getCode() + ": " + e.getMessage());
+}</code></pre>
+</section>
+
+<section id="go">
+<h2>Go SDK</h2>
+<p><strong>Install:</strong> <code>go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go@v1.4.0</code> | Requires Go 1.21+</p>
+<pre><code>import overdrive "github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go"
+
+// Open
+db, err := overdrive.Open("app.odb")
+db, err := overdrive.Open("app.odb",
+    overdrive.WithPassword("secret123"),
+    overdrive.WithEngine("Disk"),
+    overdrive.WithAutoCreateTables(true))
+defer db.Close()
+
+// CRUD
+id, err := db.Insert("users", map[string]any{"name": "Alice", "age": 30})
+user, err := db.Get("users", id)          // map or nil
+updated, err := db.Update("users", id, map[string]any{"age": 31})
+deleted, err := db.Delete("users", id)
+count, err := db.Count("users")
+
+// Query
+result, err := db.Query("SELECT * FROM users WHERE age > 25")
+result, err := db.QuerySafe("SELECT * FROM users WHERE name = ?", userName)
+matches, err := db.Search("users", "alice")
+
+// Helpers (v1.4)
+user, err := db.FindOne("users", "age > 25")
+users, err := db.FindAll("users", "age > 25", "name ASC", 10)
+n, err := db.UpdateMany("users", "status = 'trial'", map[string]any{"status": "active"})
+n, err := db.DeleteMany("logs", "old = true")
+n, err := db.CountWhere("users", "active = true")
+found, err := db.Exists("users", "users_1")
+
+// Transactions (v1.4)
+err = db.Transaction(func(txn *overdrive.TransactionHandle) error {
+    _, err := db.Insert("orders", map[string]any{"item": "widget"})
+    return err
+}, overdrive.ReadCommitted)
+err = db.TransactionWithRetry(myFn, overdrive.ReadCommitted, 3)
+
+// RAM engine (v1.4)
+err = db.Snapshot("./backup.odb")
+err = db.Restore("./backup.odb")
+usage, err := db.MemoryUsageStats()
+
+// Watchdog (v1.4)
+report, err := overdrive.Watchdog("app.odb")
+// report.IntegrityStatus, .FileSizeBytes, .PageCount, .MagicValid
+
+// Thread-safe
+safeDB, err := overdrive.OpenSafe("app.odb")</code></pre>
+</section>
+
+<section id="rust">
+<h2>Rust SDK</h2>
+<p><strong>Install:</strong> <code>overdrive-db = "1.4.0"</code> in Cargo.toml | Requires Rust 2021 edition</p>
+<div class="alert info">
+  <p>The Rust crate dynamically loads the native library at runtime. Download <code>overdrive.dll</code> / <code>liboverdrive.so</code> / <code>liboverdrive.dylib</code> from <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases/latest">GitHub Releases</a> and place it next to your binary.</p>
+</div>
+<pre><code>use overdrive::{OverDriveDB, IsolationLevel};
+use overdrive::shared::SharedDB;
+use serde_json::json;
+
+let mut db = OverDriveDB::open("app.odb")?;
+let mut db = OverDriveDB::open_encrypted("app.odb", "ODB_KEY")?;
+
+db.create_table("users")?;
+let id = db.insert("users", &json!({"name": "Alice", "age": 30}))?;
+let user: Option&lt;Value&gt; = db.get("users", &id)?;
+let updated: bool = db.update("users", &id, &json!({"age": 31}))?;
+let deleted: bool = db.delete("users", &id)?;
+let count: usize = db.count("users")?;
+
+let result = db.query("SELECT * FROM users WHERE age > 25")?;
+println!("{} rows in {:.2}ms", result.rows.len(), result.execution_time_ms);
+
+let result = db.query_safe("SELECT * FROM users WHERE name = ?", &[user_input])?;
+
+let txn = db.begin_transaction(IsolationLevel::ReadCommitted)?;
+db.insert("orders", &json!({"item": "widget"}))?;
+db.commit_transaction(&txn)?;
+db.cleanup_wal()?;
+
+db.backup("backups/app.odb")?;
+db.close()?;</code></pre>
+</section>
+
+<section id="c">
+<h2>C / C++ SDK</h2>
+<p>Include <code>overdrive.h</code> and link against the native library.</p>
+<div class="alert">
+  <p><strong>Memory rule:</strong> Every <code>char*</code> returned by <code>overdrive_*</code> functions must be freed with <code>overdrive_free_string()</code>. The <code>ODB*</code> handle must be closed with <code>overdrive_close()</code>.</p>
+</div>
+<pre><code>#include "overdrive.h"
+#include &lt;stdio.h&gt;
+
+int main() {
+    ODB* db = overdrive_open("myapp.odb");
+    if (!db) { printf("Error: %s\n", overdrive_last_error()); return 1; }
+
+    overdrive_create_table(db, "users");
+
+    char* id = overdrive_insert(db, "users", "{\"name\":\"Alice\",\"age\":30}");
+    printf("Inserted: %s\n", id);
+    overdrive_free_string(id);  // must free!
+
+    char* result = overdrive_query(db, "SELECT * FROM users WHERE age > 25");
+    printf("Results: %s\n", result);
+    overdrive_free_string(result);  // must free!
+
+    uint64_t txn = overdrive_begin_transaction(db, 1);  // ReadCommitted
+    overdrive_insert(db, "logs", "{\"event\":\"test\"}");
+    overdrive_commit_transaction(db, txn);
+
+    overdrive_sync(db);
+    overdrive_close(db);
+    return 0;
+}</code></pre>
+</section>
+
+<section id="sql">
+<h2>SQL Reference</h2>
+<pre><code>-- SELECT
+SELECT * FROM users
+SELECT name, age FROM users
+SELECT * FROM users WHERE age > 25
+SELECT * FROM users WHERE age > 18 AND active = true
+SELECT * FROM users WHERE city = 'London' OR city = 'Paris'
+SELECT * FROM users WHERE name LIKE 'Al%'
+SELECT * FROM users ORDER BY age DESC
+SELECT * FROM users LIMIT 10 OFFSET 20
+
+-- Aggregations
+SELECT COUNT(*) FROM users
+SELECT COUNT(*) FROM users WHERE active = true
+SELECT AVG(age), MIN(age), MAX(age) FROM users
+SELECT SUM(price) FROM orders
+
+-- INSERT
+INSERT INTO users VALUES {"name": "Alice", "age": 30}
+
+-- UPDATE
+UPDATE users SET {"age": 31} WHERE name = 'Alice'
+
+-- DELETE
+DELETE FROM users WHERE age &lt; 18
+
+-- DDL
+CREATE TABLE users
+DROP TABLE old_data
+SHOW TABLES</code></pre>
+<h3>WHERE Operators</h3>
+<table>
+<tr><th>Operator</th><th>Example</th></tr>
+<tr><td><code>=</code></td><td><code>WHERE name = 'Alice'</code></td></tr>
+<tr><td><code>!=</code></td><td><code>WHERE status != 'deleted'</code></td></tr>
+<tr><td><code>&gt;</code> <code>&lt;</code> <code>&gt;=</code> <code>&lt;=</code></td><td><code>WHERE age &gt; 25</code></td></tr>
+<tr><td><code>AND</code></td><td><code>WHERE age &gt; 18 AND active = true</code></td></tr>
+<tr><td><code>OR</code></td><td><code>WHERE city = 'London' OR city = 'Paris'</code></td></tr>
+<tr><td><code>LIKE</code></td><td><code>WHERE name LIKE 'Al%'</code> (% = any chars, _ = one char)</td></tr>
+</table>
+</section>
+
+<section id="errors">
+<h2>Error Codes</h2>
+<p>Format: <code>ODB-{CATEGORY}-{NUMBER}</code></p>
+<table>
+<tr><th>Code</th><th>Meaning</th><th>Solution</th></tr>
+<tr><td><code>ODB-AUTH-001</code></td><td>Incorrect password</td><td>Verify the password is correct</td></tr>
+<tr><td><code>ODB-AUTH-002</code></td><td>Password too short</td><td>Use at least 8 characters</td></tr>
+<tr><td><code>ODB-TABLE-001</code></td><td>Table not found</td><td>Create table or enable auto_create_tables</td></tr>
+<tr><td><code>ODB-TABLE-002</code></td><td>Table already exists</td><td>Use tableExists() before creating</td></tr>
+<tr><td><code>ODB-QUERY-001</code></td><td>SQL syntax error</td><td>Check your SQL syntax</td></tr>
+<tr><td><code>ODB-TXN-001</code></td><td>Transaction deadlock</td><td>Use transactionWithRetry()</td></tr>
+<tr><td><code>ODB-TXN-002</code></td><td>Transaction conflict</td><td>Use transactionWithRetry()</td></tr>
+<tr><td><code>ODB-IO-001</code></td><td>File not found</td><td>Check the database path</td></tr>
+<tr><td><code>ODB-IO-003</code></td><td>File corrupted</td><td>Restore from backup</td></tr>
+<tr><td><code>ODB-FFI-001</code></td><td>Native library not found</td><td>Download from GitHub Releases</td></tr>
+</table>
+<h3>Error Hierarchy</h3>
+<pre><code>OverDriveError (base)
+├── AuthenticationError   ODB-AUTH-*
+├── TableError            ODB-TABLE-*
+├── QueryError            ODB-QUERY-*
+├── TransactionError      ODB-TXN-*
+├── IOError               ODB-IO-*
+└── FFIError              ODB-FFI-*</code></pre>
+</section>
+
+<section id="migration">
+<h2>Migration Guide: v1.3 → v1.4</h2>
+<div class="alert">
+  <p><strong>v1.4 is 100% backward compatible.</strong> All v1.3 code works without any changes.</p>
+</div>
+<h3>Constructor → open()</h3>
+<pre><code># Before (v1.3) — still works
+db = OverDrive("app.odb")
+
+# After (v1.4) — recommended
+db = OverDrive.open("app.odb")</code></pre>
+<h3>openEncrypted() → open() with password</h3>
+<pre><code># Before (v1.3) — still works
+db = OverDrive.open_encrypted("app.odb", "ODB_KEY")
+
+# After (v1.4) — simpler
+db = OverDrive.open("app.odb", password=os.environ["DB_PASSWORD"])</code></pre>
+<h3>Manual transactions → callback pattern</h3>
+<pre><code># Before (v1.3) — still works
+txn_id = db.begin_transaction()
+try:
+    db.insert("users", {"name": "Alice"})
+    db.commit_transaction(txn_id)
+except:
+    db.abort_transaction(txn_id)
+    raise
+
+# After (v1.4) — recommended
+db.transaction(lambda txn: db.insert("users", {"name": "Alice"}))</code></pre>
+<h3>Manual table creation → auto-creation</h3>
+<pre><code># Before (v1.3) — still works
+db = OverDrive("app.odb")
+db.create_table("users")
+db.insert("users", {"name": "Alice"})
+
+# After (v1.4) — table auto-created
+db = OverDrive.open("app.odb")
+db.insert("users", {"name": "Alice"})  # table created automatically</code></pre>
+<p style="margin-top:2rem"><a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK">GitHub</a> · <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases">Releases</a> · <a href="https://afot.in">AFOT</a></p>
+<p style="font-size:.8rem;color:var(--dim);margin-top:.5rem">#afot #OverDriveDb #InCodeSDK #EmbeddedDB</p>
+</section>
+
+</main>
+<script>
+// Language tab switcher
+function initTabs(groupId) {
+  const tabs = document.querySelectorAll(`.lt[data-g="${groupId}"]`);
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const lang = tab.dataset.l;
+      document.querySelectorAll(`[id^="${groupId}-"]`).forEach(c => c.classList.remove('active'));
+      const target = document.getElementById(`${groupId}-${lang}`);
+      if (target) target.classList.add('active');
+    });
+  });
 }
+['install','qs','ram','txn'].forEach(initTabs);
 
-id, _ := db.Insert("users", user)
-
-// SQL Power
-results, _ := db.Query("SELECT * FROM users WHERE role = 'Lead Developer'")</code></pre>
-        </section>
-
-        <section id="rust">
-            <h2>Rust SDK Guide</h2>
-            <p>The Rust SDK is our reference implementation, offering zero-cost abstractions and memory safety.</p>
-            <pre><code>use overdrive_db::OverDriveDB;
-
-let mut db = OverDriveDB::open("data.odb").unwrap();
-db.create_table("logs").unwrap();
-
-db.insert("logs", &json!({ "status": "ok", "code": 200 })).unwrap();</code></pre>
-        </section>
-
-        <section id="sql">
-            <h2>SQL Queries</h2>
-            <p>OverDrive-DB's unique "Hybrid" engine allows you to run SQL directly on your JSON documents.</p>
-            <pre><code>SELECT * 
-FROM users 
-WHERE profile.age > 25 
-AND settings.notifications = true 
-LIMIT 10;</code></pre>
-            <p>Supported operations: <code>SELECT</code>, <code>WHERE</code>, <code>INSERT</code>, <code>UPDATE</code>,
-                <code>DELETE</code>, <code>COUNT</code>, <code>MIN</code>, <code>MAX</code>, <code>AVG</code>.
-            </p>
-        </section>
-
-        <section id="seo-links" style="border-top: 1px solid var(--border); padding-top: 2rem;">
-            <p>Built with ❤️ by <a href="https://afot.in" style="color: var(--link); text-decoration: none;">ALL FOR ONE
-                    TECH</a></p>
-            <p style="font-size: 0.8rem; color: var(--text-dim);">#afot #OverDriveDb #DeveloperGuide #EmbeddeDB
-                #GoDeveloper #RustLang</p>
-        </section>
-    </main>
-
-    <script>
-        // Language tab switcher
-        const tabs = document.querySelectorAll('.lang-tab');
-        const contents = document.querySelectorAll('.lang-content');
-
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                const lang = tab.getAttribute('data-lang');
-
-                tabs.forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-
-                contents.forEach(c => {
-                    c.classList.remove('active');
-                    if (c.id === `install-${lang}`) {
-                        c.classList.add('active');
-                    }
-                });
-            });
-        });
-
-        // Simple scroll spy logic
-        window.addEventListener('scroll', () => {
-            let fromTop = window.scrollY + 100;
-            const links = document.querySelectorAll('.nav-link');
-
-            links.forEach(link => {
-                let section = document.querySelector(link.hash);
-                if (
-                    section.offsetTop <= fromTop &&
-                    section.offsetTop + section.offsetHeight > fromTop
-                ) {
-                    links.forEach(l => l.classList.remove('active'));
-                    link.classList.add('active');
-                }
-            });
-        });
-    </script>
+// Scroll spy
+const links = document.querySelectorAll('.nl');
+const sections = document.querySelectorAll('section[id]');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => {
+    if (window.scrollY >= s.offsetTop - 120) current = s.id;
+  });
+  links.forEach(l => {
+    l.classList.toggle('active', l.getAttribute('href') === '#' + current);
+  });
+}, { passive: true });
+</script>
 </body>
-
 </html>

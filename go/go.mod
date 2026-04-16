@@ -1,3 +1,3 @@
-module github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/go
+module github.com/AfoT/OverDrive-DB/IncodeSDK/go
 
 go 1.21

@@ -1,514 +1,270 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OverDrive-DB | Embeddable Hybrid SQL+NoSQL Database</title>
-
-    <!-- SEO Meta Tags -->
-    <meta name="description"
-        content="OverDrive-DB is a high-performance, embeddable hybrid SQL+NoSQL document database. Like SQLite for JSON. No server, zero config, ACID compliant. #OverDriveDB #AFOT">
-    <meta name="keywords"
-        content="embedded database, json database, nosql, sql, rust database, python sdk, nodejs sdk, java sdk, document store, afot">
-    <meta name="author" content="ALL FOR ONE TECH (AFOT)">
-    <link rel="canonical" href="https://all-for-one-tech.github.io/OverDrive-DB_SDK/">
-
-    <!-- Open Graph / Social Media -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://all-for-one-tech.github.io/OverDrive-DB_SDK/">
-    <meta property="og:title" content="OverDrive-DB | Embeddable Document Database">
-    <meta property="og:description"
-        content="The power of SQL with the flexibility of JSON. Embed it directly in your app. No server required.">
-    <meta property="og:image" content="https://all-for-one-tech.github.io/OverDrive-DB_SDK/assets/logo.ico">
-
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://all-for-one-tech.github.io/OverDrive-DB_SDK/">
-    <meta property="twitter:title" content="OverDrive-DB | Embeddable Document Database">
-    <meta property="twitter:description"
-        content="Embeddable hybrid SQL+NoSQL database for modern apps. Zero-config, single file.">
-
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="assets/logo.ico">
-
-    <!-- JSON-LD Structured Data for Google SEO -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "OverDrive-DB",
-      "operatingSystem": "Windows, Linux, macOS",
-      "applicationCategory": "Database",
-      "author": {
-        "@type": "Organization",
-        "name": "ALL FOR ONE TECH"
-      },
-      "description": "High-performance, embeddable hybrid SQL+NoSQL document database. Like SQLite for JSON.",
-      "keywords": "database, embedded, nosql, sql, rust, python, nodejs, java, go"
-    }
-    </script>
-
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;600&display=swap"
-        rel="stylesheet">
-
-    <style>
-        :root {
-            --bg: #0a0c10;
-            --surface: #161b22;
-            --primary: #ff8c00;
-            --primary-glow: rgba(255, 140, 0, 0.3);
-            --text: #f0f6fc;
-            --text-dim: #8b949e;
-            --border: #30363d;
-            --accent: #58a6ff;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
-
-        /* Smooth Background Gradient */
-        .bg-gradient {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background:
-                radial-gradient(circle at 80% 20%, rgba(255, 140, 0, 0.05) 0%, transparent 40%),
-                radial-gradient(circle at 20% 80%, rgba(88, 166, 255, 0.05) 0%, transparent 40%);
-            z-index: -1;
-        }
-
-        /* Navbar */
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1.5rem 5%;
-            backdrop-filter: blur(10px);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .logo-box {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-weight: 800;
-            font-size: 1.5rem;
-            color: var(--text);
-            text-decoration: none;
-        }
-
-        .logo-img {
-            width: 32px;
-            height: 32px;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 2rem;
-        }
-
-        .nav-links a {
-            color: var(--text-dim);
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s;
-        }
-
-        .nav-links a:hover {
-            color: var(--primary);
-        }
-
-        /* Hero */
-        .hero {
-            padding: 8rem 5% 4rem;
-            text-align: center;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .badge-afot {
-            display: inline-block;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            padding: 0.5rem 1rem;
-            border-radius: 99px;
-            font-size: 0.9rem;
-            color: var(--primary);
-            margin-bottom: 2rem;
-            font-weight: 600;
-        }
-
-        h1 {
-            font-size: 4.5rem;
-            font-weight: 800;
-            letter-spacing: -2px;
-            margin-bottom: 1.5rem;
-            background: linear-gradient(135deg, #fff 0%, #8b949e 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .hero p {
-            font-size: 1.4rem;
-            color: var(--text-dim);
-            max-width: 800px;
-            margin: 0 auto 3rem;
-        }
-
-        .hero-btns {
-            display: flex;
-            gap: 1.5rem;
-            justify-content: center;
-        }
-
-        .btn {
-            padding: 1rem 2.5rem;
-            border-radius: 12px;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all 0.3s;
-            cursor: pointer;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            color: #000;
-            box-shadow: 0 0 20px var(--primary-glow);
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 0 40px var(--primary-glow);
-        }
-
-        .btn-secondary {
-            background: var(--surface);
-            color: var(--text);
-            border: 1px solid var(--border);
-        }
-
-        .btn-secondary:hover {
-            background: var(--border);
-            transform: translateY(-3px);
-        }
-
-        /* Features */
-        .features {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            padding: 5rem 5%;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            padding: 2.5rem;
-            border-radius: 24px;
-            transition: all 0.3s;
-        }
-
-        .card:hover {
-            border-color: var(--primary);
-            transform: translateY(-5px);
-        }
-
-        .card i {
-            font-size: 2.5rem;
-            color: var(--primary);
-            margin-bottom: 1.5rem;
-            display: block;
-        }
-
-        .card h3 {
-            margin-bottom: 1rem;
-            font-size: 1.5rem;
-        }
-
-        .card p {
-            color: var(--text-dim);
-        }
-
-        /* Code Section */
-        .code-preview {
-            padding: 5rem 5%;
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-
-        .code-container {
-            background: #0d1117;
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-        }
-
-        .code-header {
-            background: #161b22;
-            padding: 0.75rem 1.5rem;
-            display: flex;
-            gap: 1.5rem;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .code-tab {
-            color: var(--text-dim);
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .code-tab.active {
-            color: var(--primary);
-            border-bottom: 2px solid var(--primary);
-        }
-
-        .code-body {
-            padding: 2rem;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.95rem;
-            color: #d1d5db;
-            overflow-x: auto;
-        }
-
-        /* Footer */
-        footer {
-            padding: 5rem 5% 2rem;
-            background: #010409;
-            border-top: 1px solid var(--border);
-            text-align: center;
-        }
-
-        .footer-logo {
-            margin-bottom: 2rem;
-        }
-
-        .hashtags {
-            margin-top: 1rem;
-            color: var(--primary);
-            font-weight: 600;
-        }
-
-        .copyright {
-            margin-top: 3rem;
-            color: var(--text-dim);
-            font-size: 0.9rem;
-        }
-
-        /* Registry Badges */
-        .registries {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 1rem;
-            margin-top: 4rem;
-        }
-
-        .registries img {
-            height: 25px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OverDrive-DB | Embeddable Hybrid SQL+NoSQL Database</title>
+<meta name="description" content="OverDrive-DB v1.4 - embeddable hybrid SQL+NoSQL document database. Password encryption, RAM engine, watchdog monitoring. Python, Node.js, Java, Go, Rust, C. No server required.">
+<meta name="keywords" content="embedded database, json database, nosql, sql, rust, python, nodejs, java, go, document store, afot, overdrive">
+<meta name="author" content="ALL FOR ONE TECH (AFOT)">
+<link rel="canonical" href="https://all-for-one-tech.github.io/OverDrive-DB_IncodeSDK/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://all-for-one-tech.github.io/OverDrive-DB_IncodeSDK/">
+<meta property="og:title" content="OverDrive-DB | Embeddable Document Database">
+<meta property="og:description" content="The power of SQL with the flexibility of JSON. Embed it directly in your app. No server required.">
+<link rel="icon" type="image/x-icon" href="assets/logo.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0c10;--surface:#161b22;--primary:#ff8c00;--glow:rgba(255,140,0,.3);--text:#f0f6fc;--dim:#8b949e;--border:#30363d}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden}
+.bg{position:fixed;top:0;left:0;width:100vw;height:100vh;background:radial-gradient(circle at 80% 20%,rgba(255,140,0,.05),transparent 40%),radial-gradient(circle at 20% 80%,rgba(88,166,255,.05),transparent 40%);z-index:-1}
+nav{display:flex;justify-content:space-between;align-items:center;padding:1.2rem 5%;backdrop-filter:blur(10px);position:sticky;top:0;z-index:100;border-bottom:1px solid var(--border)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.4rem;color:var(--text);text-decoration:none}
+.logo img{width:28px;height:28px}
+.vbadge{background:rgba(255,140,0,.15);border:1px solid rgba(255,140,0,.3);color:var(--primary);padding:.15rem .5rem;border-radius:5px;font-size:.75rem;font-weight:700;margin-left:4px}
+.nav-links{display:flex;gap:2rem}
+.nav-links a{color:var(--dim);text-decoration:none;font-weight:500;transition:color .2s}
+.nav-links a:hover,.nav-links a.hl{color:var(--primary)}
+.hero{padding:7rem 5% 4rem;text-align:center;max-width:1100px;margin:0 auto}
+.badge{display:inline-block;background:var(--surface);border:1px solid var(--border);padding:.4rem .9rem;border-radius:99px;font-size:.85rem;color:var(--primary);margin-bottom:1.5rem;font-weight:600}
+h1{font-size:4rem;font-weight:800;letter-spacing:-2px;margin-bottom:1.2rem;background:linear-gradient(135deg,#fff,#8b949e);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero p{font-size:1.2rem;color:var(--dim);max-width:700px;margin:0 auto 2.5rem}
+.btns{display:flex;gap:1.2rem;justify-content:center;flex-wrap:wrap}
+.btn{padding:.9rem 2.2rem;border-radius:10px;font-weight:600;text-decoration:none;transition:all .25s;font-size:1rem}
+.btn-p{background:var(--primary);color:#000;box-shadow:0 0 20px var(--glow)}
+.btn-p:hover{transform:translateY(-3px);box-shadow:0 0 40px var(--glow)}
+.btn-s{background:var(--surface);color:var(--text);border:1px solid var(--border)}
+.btn-s:hover{background:var(--border);transform:translateY(-3px)}
+.shields{display:flex;flex-wrap:wrap;justify-content:center;gap:.8rem;margin-top:3rem}
+.shields img{height:22px}
+.sec{padding:4rem 5%;max-width:1200px;margin:0 auto}
+.stitle{font-size:2rem;font-weight:700;margin-bottom:.4rem}
+.ssub{color:var(--dim);margin-bottom:2.5rem;font-size:1.05rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:1.5rem}
+.card{background:var(--surface);border:1px solid var(--border);padding:1.8rem;border-radius:16px;transition:all .25s}
+.card:hover{border-color:var(--primary);transform:translateY(-4px)}
+.card-icon{font-size:1.8rem;margin-bottom:.8rem}
+.card h3{font-size:1.1rem;margin-bottom:.5rem}
+.card p{color:var(--dim);font-size:.9rem}
+.codebox{background:#0d1117;border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.5);max-width:900px;margin:0 auto}
+.codetabs{background:#161b22;padding:.6rem 1.2rem;display:flex;gap:1.2rem;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.tab{color:var(--dim);font-size:.88rem;font-weight:600;cursor:pointer;padding:.3rem 0;border-bottom:2px solid transparent;transition:all .2s}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.codebody{padding:1.8rem;font-family:'JetBrains Mono',monospace;font-size:.85rem;color:#d1d5db;overflow-x:auto;line-height:1.65}
+.codebody pre{margin:0;white-space:pre}
+.hlbox{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2.5rem;margin:2rem 0}
+.hlgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1.2rem;margin-top:1.8rem}
+.hitem{display:flex;align-items:flex-start;gap:.8rem}
+.hicon{font-size:1.4rem;flex-shrink:0;margin-top:.1rem}
+.htext h4{font-size:.95rem;margin-bottom:.2rem}
+.htext p{color:var(--dim);font-size:.82rem;font-family:'JetBrains Mono',monospace}
+.igrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:1rem;margin-top:2rem}
+.icard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.4rem}
+.icard .lang{font-size:.75rem;color:var(--primary);font-weight:700;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:.5px}
+.icard code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#d1d5db;display:block;background:#0d1117;padding:.6rem .9rem;border-radius:5px;border:1px solid var(--border)}
+footer{padding:3.5rem 5% 2rem;background:#010409;border-top:1px solid var(--border);text-align:center}
+.flogo img{width:36px;margin-bottom:10px}
+.flogo p{font-weight:800;font-size:1.05rem}
+.htags{margin-top:.7rem;color:var(--primary);font-weight:600;font-size:.9rem}
+.copy{margin-top:1.8rem;color:var(--dim);font-size:.82rem}
+@media(max-width:600px){h1{font-size:2.4rem}.btns{flex-direction:column;align-items:center}.nav-links{gap:1rem}}
+</style>
 </head>
-
 <body>
-    <div class="bg-gradient"></div>
+<div class="bg"></div>
+<nav>
+  <a href="#" class="logo">
+    <img src="assets/logo.ico" alt="OverDrive">
+    OverDrive-DB<span class="vbadge">v1.4</span>
+  </a>
+  <div class="nav-links">
+    <a href="guide.html" class="hl">Docs</a>
+    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK">GitHub</a>
+    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases">Download</a>
+    <a href="https://afot.in">AFOT</a>
+  </div>
+</nav>
 
-    <nav>
-        <a href="#" class="logo-box">
-            <img src="assets/logo.ico" alt="OverDrive logo" class="logo-img">
-            OverDrive-DB
-        </a>
-        <div class="nav-links">
-            <a href="guide.html" style="color: var(--primary); font-weight: 700;">Developer Guide</a>
-            <a href="#features">Features</a>
-            <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK">GitHub</a>
-            <a href="https://afot.in">AFOT</a>
-        </div>
-    </nav>
+<header class="hero">
+  <div class="badge">Built by ALL FOR ONE TECH</div>
+  <h1>Embeddable DB.<br>Pure Performance.</h1>
+  <p>Hybrid SQL+NoSQL document database. Like SQLite, but native to JSON. Password encryption, RAM engine, 6 storage engines. No server. No config. Just a file.</p>
+  <div class="btns">
+    <a href="guide.html" class="btn btn-p">Get Started</a>
+    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases" class="btn btn-s">Download Binaries</a>
+  </div>
+  <div class="shields">
+    <a href="https://crates.io/crates/overdrive-db"><img src="https://img.shields.io/crates/v/overdrive-db?style=flat-square&color=orange&label=crates.io" alt="Rust"></a>
+    <a href="https://www.npmjs.com/package/overdrive-db"><img src="https://img.shields.io/npm/v/overdrive-db?style=flat-square&color=cb3837&label=npm" alt="npm"></a>
+    <a href="https://pypi.org/project/overdrive-db/"><img src="https://img.shields.io/pypi/v/overdrive-db?style=flat-square&color=3776ab&label=PyPI" alt="PyPI"></a>
+    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/packages"><img src="https://img.shields.io/badge/maven-1.4.0-007ec6?style=flat-square&logo=apache-maven" alt="Maven"></a>
+  </div>
+</header>
 
-    <header class="hero">
-        <div class="badge-afot">Built by ALL FOR ONE TECH</div>
-        <h1>Embeddable DB.<br>Pure Performance.</h1>
-        <p>A hybrid SQL+NoSQL document database designed for high-concurrency and modern SDKs. Like SQLite, but native
-            to JSON. #OverDriveDB #AFOT</p>
-        <div class="hero-btns">
-            <a href="#quickstart" class="btn btn-primary">Get Started</a>
-            <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases" class="btn btn-secondary">Download
-                Binaries</a>
-        </div>
+<section id="features" class="sec">
+  <div class="grid">
+    <div class="card"><div class="card-icon">⚡</div><h3>Zero Config</h3><p>Open a file, start querying. No servers, no background processes, no config files.</p></div>
+    <div class="card"><div class="card-icon">🗄️</div><h3>6 Storage Engines</h3><p>Disk B+Tree, RAM HashMap, Vector HNSW, Time-Series, Graph, Streaming. Right engine for every use case.</p></div>
+    <div class="card"><div class="card-icon">🔒</div><h3>ACID Transactions</h3><p>Full MVCC with 4 isolation levels. Callback pattern with auto-commit/rollback and retry.</p></div>
+    <div class="card"><div class="card-icon">🔐</div><h3>Password Encryption</h3><p>AES-256-GCM with Argon2id key derivation. One line to encrypt your database.</p></div>
+    <div class="card"><div class="card-icon">🚀</div><h3>RAM Engine</h3><p>Sub-microsecond reads with O(1) HashMap. Snapshot to disk, restore on startup.</p></div>
+    <div class="card"><div class="card-icon">🔭</div><h3>Watchdog Monitoring</h3><p>Check file integrity before opening. Detect corruption in under 100ms.</p></div>
+    <div class="card"><div class="card-icon">📄</div><h3>SQL on JSON</h3><p>SELECT, WHERE, ORDER BY, LIMIT, COUNT, AVG, SUM on schemaless JSON documents.</p></div>
+    <div class="card"><div class="card-icon">🌍</div><h3>6 Languages</h3><p>Python, Node.js, Java, Go, Rust, C/C++. Identical behavior across all SDKs.</p></div>
+    <div class="card"><div class="card-icon">🛡️</div><h3>Security Hardened</h3><p>Auto chmod 600, SQL injection prevention, encrypted backups, WAL cleanup.</p></div>
+  </div>
+</section>
 
-        <div class="registries">
-            <a href="https://crates.io/crates/overdrive-db"><img
-                    src="https://img.shields.io/crates/v/overdrive-db?style=flat-square&color=orange&label=crates.io"
-                    alt="Rust"></a>
-            <a href="https://www.npmjs.com/package/overdrive-db"><img
-                    src="https://img.shields.io/npm/v/overdrive-db?style=flat-square&color=cb3837&label=npm"
-                    alt="Node.js"></a>
-            <a href="https://pypi.org/project/overdrive-db/"><img
-                    src="https://img.shields.io/pypi/v/overdrive-db?style=flat-square&color=3776ab&label=PyPI"
-                    alt="Python"></a>
-            <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/packages"><img
-                    src="https://img.shields.io/badge/maven-central-007ec6?style=flat-square&logo=apache-maven"
-                    alt="Java"></a>
-        </div>
-    </header>
+<section id="quickstart" class="sec">
+  <div class="stitle">Hello World</div>
+  <div class="ssub">3 lines of code. Tables auto-created. No setup required.</div>
+  <div class="codebox">
+    <div class="codetabs" id="mtabs">
+      <div class="tab active" data-l="py">Python</div>
+      <div class="tab" data-l="js">Node.js</div>
+      <div class="tab" data-l="java">Java</div>
+      <div class="tab" data-l="go">Go</div>
+      <div class="tab" data-l="rust">Rust</div>
+    </div>
+    <div class="codebody"><pre id="mcode"></pre></div>
+  </div>
+</section>
 
-    <section id="features" class="features">
-        <div class="card">
-            <h3>⚡ Zero Config</h3>
-            <p>No servers to install. No background processes. Just include the library and open a file. Instantly
-                ready.</p>
-        </div>
-        <div class="card">
-            <h3>📄 Hybrid Engine</h3>
-            <p>The flexibility of JSON documents with the power of SQL queries. Insert JSON, query it with SELECT/WHERE.
-            </p>
-        </div>
-        <div class="card">
-            <h3>🔒 ACID Compliant</h3>
-            <p>Reliable MVCC transactions, WAL logging, and crash-safe storage. Your data is always consistent.</p>
-        </div>
-        <div class="card">
-            <h3>🔎 Search Built-in</h3>
-            <p>Powerful full-text search and secondary B-Tree indexing across your document collections.</p>
-        </div>
-        <div class="card">
-            <h3>🗜️ Efficient</h3>
-            <p>Zstd compression and AES-256 encryption at rest. Small binary footprint, massive performance.</p>
-        </div>
-        <div class="card">
-            <h3>🌍 Universal</h3>
-            <p>Native SDKs for Rust, Python, Node.js, Go, Java, and C/C++. One database, every language.</p>
-        </div>
-    </section>
+<section class="sec">
+  <div class="hlbox">
+    <div class="stitle">What's New in v1.4</div>
+    <div class="ssub" style="margin-bottom:0">100% backward compatible. All v1.3 code still works unchanged.</div>
+    <div class="hlgrid">
+      <div class="hitem"><div class="hicon">🔐</div><div class="htext"><h4>Password Databases</h4><p>OverDrive.open("app.odb", password="secret")</p></div></div>
+      <div class="hitem"><div class="hicon">🚀</div><div class="htext"><h4>RAM Engine</h4><p>OverDrive.open("cache.odb", engine="RAM")</p></div></div>
+      <div class="hitem"><div class="hicon">🔭</div><div class="htext"><h4>Watchdog</h4><p>OverDrive.watchdog("app.odb")</p></div></div>
+      <div class="hitem"><div class="hicon">🔄</div><div class="htext"><h4>Transaction Callbacks</h4><p>db.transaction(lambda txn: db.insert(...))</p></div></div>
+      <div class="hitem"><div class="hicon">🛠️</div><div class="htext"><h4>Helper Methods</h4><p>findOne, findAll, updateMany, deleteMany, countWhere, exists</p></div></div>
+      <div class="hitem"><div class="hicon">🏗️</div><div class="htext"><h4>Auto-Table Creation</h4><p>Tables created on first insert automatically</p></div></div>
+    </div>
+  </div>
+</section>
 
-    <section id="quickstart" class="code-preview">
-        <div class="code-container">
-            <div class="code-header">
-                <div class="code-tab active">Rust</div>
-                <div class="code-tab">Node.js</div>
-                <div class="code-tab">Python</div>
-                <div class="code-tab">Java</div>
-            </div>
-            <div class="code-body">
-                <pre><code>// OverDrive-DB Rust Example
-use overdrive_db::OverDriveDB;
+<section id="install" class="sec">
+  <div class="stitle">Install</div>
+  <div class="ssub">One command per language. Native binaries included in packages.</div>
+  <div class="igrid">
+    <div class="icard"><div class="lang">Python</div><code>pip install overdrive-db</code></div>
+    <div class="icard"><div class="lang">Node.js</div><code>npm install overdrive-db</code></div>
+    <div class="icard"><div class="lang">Go</div><code>go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go@v1.4.0</code></div>
+    <div class="icard"><div class="lang">Rust (Cargo.toml)</div><code>overdrive-db = "1.4.0"</code></div>
+    <div class="icard"><div class="lang">Java (Maven)</div><code>&lt;artifactId&gt;overdrive-db&lt;/artifactId&gt; &lt;version&gt;1.4.0&lt;/version&gt;</code></div>
+    <div class="icard"><div class="lang">C / C++</div><code># Download overdrive.h + native binary from GitHub Releases</code></div>
+  </div>
+</section>
 
+<footer>
+  <div class="flogo">
+    <img src="assets/logo.ico" alt="AFOT">
+    <p>ALL FOR ONE TECH</p>
+  </div>
+  <p>Empowering developers with high-performance embedded infrastructure.</p>
+  <div class="htags">#afot #OverDriveDb #InCodeSDK #EmbeddedDB</div>
+  <p class="copy">&copy; 2026 ALL FOR ONE TECH. Licensed under MIT / Apache-2.0.</p>
+</footer>
+
+<script>
+const S={
+py:`from overdrive import OverDrive
+
+# Open or create — table auto-created on first insert
+db = OverDrive.open("myapp.odb")
+db.insert("users", {"name": "Alice", "age": 30})
+results = db.query("SELECT * FROM users WHERE age > 25")
+print(results)
+db.close()
+
+# Password-protected database
+db2 = OverDrive.open("secure.odb", password="my-secret-pass-123")
+
+# RAM engine — sub-microsecond reads
+cache = OverDrive.open("cache.odb", engine="RAM")
+cache.snapshot("./backup/cache.odb")`,
+
+js:`const { OverDrive } = require('overdrive-db');
+
+// Open or create — table auto-created on first insert
+const db = OverDrive.open('myapp.odb');
+db.insert('users', { name: 'Alice', age: 30 });
+const results = db.query('SELECT * FROM users WHERE age > 25');
+console.log(results);
+db.close();
+
+// Password-protected database
+const db2 = OverDrive.open('secure.odb', { password: 'my-secret-pass-123' });
+
+// RAM engine — sub-microsecond reads
+const cache = OverDrive.open('cache.odb', { engine: 'RAM' });
+cache.snapshot('./backup/cache.odb');`,
+
+java:`import com.afot.overdrive.OverDrive;
+import java.util.Map;
+
+// Open or create — table auto-created on first insert
+try (OverDrive db = OverDrive.open("myapp.odb")) {
+    db.insert("users", Map.of("name", "Alice", "age", 30));
+    var results = db.query("SELECT * FROM users WHERE age > 25");
+    System.out.println(results);
+}
+
+// Password-protected database
+OverDrive db2 = OverDrive.open("secure.odb",
+    new OverDrive.OpenOptions().password("my-secret-pass-123"));
+
+// RAM engine
+OverDrive cache = OverDrive.open("cache.odb",
+    new OverDrive.OpenOptions().engine("RAM"));`,
+
+go:`import overdrive "github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go"
+
+// Open or create — table auto-created on first insert
+db, _ := overdrive.Open("myapp.odb")
+defer db.Close()
+db.Insert("users", map[string]any{"name": "Alice", "age": 30})
+result, _ := db.Query("SELECT * FROM users WHERE age > 25")
+fmt.Println(result.Rows)
+
+// Password-protected database
+db2, _ := overdrive.Open("secure.odb",
+    overdrive.WithPassword("my-secret-pass-123"))
+
+// RAM engine — sub-microsecond reads
+cache, _ := overdrive.Open("cache.odb", overdrive.WithEngine("RAM"))
+cache.Snapshot("./backup/cache.odb")`,
+
+rust:`use overdrive::OverDriveDB;
+use serde_json::json;
+
+// Open or create
 let mut db = OverDriveDB::open("myapp.odb").unwrap();
+db.create_table("users").unwrap();
+db.insert("users", &json!({"name": "Alice", "age": 30})).unwrap();
+let r = db.query("SELECT * FROM users WHERE age > 25").unwrap();
+println!("{} rows in {:.2}ms", r.rows.len(), r.execution_time_ms);
 
-// Create a table and insert JSON
-db.create_table("users")?;
-db.insert("users", &json!({
-    "name": "Alice",
-    "role": "Admin",
-    "vibe": "Energetic"
-}))?;
+// Encrypted database (key from env var)
+// $env:ODB_KEY = "my-aes-256-key-32-chars-minimum!!!!"
+let mut db2 = OverDriveDB::open_encrypted("secure.odb", "ODB_KEY").unwrap();
+db.close().unwrap();`
+};
 
-// SQL Query Power
-let results = db.query("SELECT * FROM users WHERE role = 'Admin'")?;
-println!("Found: {:?}", results);</code></pre>
-            </div>
-        </div>
-    </section>
-
-    <footer>
-        <div class="footer-logo">
-            <img src="assets/logo.ico" alt="AFOT logo" style="width: 50px; margin-bottom: 20px;">
-            <p style="font-weight: 800; font-size: 1.2rem;">ALL FOR ONE TECH</p>
-        </div>
-        <p>Empowering developers with high-performance embedded infrastructure.</p>
-        <div class="hashtags">#afot #OverDriveDb #InCodeSDK #EmbeddedDB</div>
-        <p class="copyright">&copy; 2026 ALL FOR ONE TECH. Licensed under MIT/Apache 2.0.</p>
-    </footer>
-
-    <script>
-        // Tab switching for code preview
-        const tabs = document.querySelectorAll('.code-tab');
-        const codeBlock = document.querySelector('.code-body code');
-
-        const snippets = {
-            'Rust': `// OverDrive-DB Rust Example
-use overdrive_db::OverDriveDB;
-
-let mut db = OverDriveDB::open("myapp.odb").unwrap();
-
-db.create_table("users")?;
-db.insert("users", &json!({
-    "name": "Alice",
-    "role": "Admin"
-}))?;
-
-let results = db.query("SELECT * FROM users WHERE role = 'Admin'")?;`,
-
-            'Node.js': `// OverDrive-DB Node.js Example
-const { OverDrive } = require('overdrive-db');
-
-const db = new OverDrive('myapp.odb');
-
-db.createTable('users');
-db.insert('users', {
-    name: 'Alice',
-    role: 'Admin'
+const el=document.getElementById('mcode');
+el.textContent=S.py;
+document.querySelectorAll('#mtabs .tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('#mtabs .tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    el.textContent=S[t.dataset.l];
+  });
 });
-
-const results = db.query("SELECT * FROM users");`,
-
-            'Python': `# OverDrive-DB Python Example
-from overdrive import OverDrive
-
-with OverDrive("myapp.odb") as db:
-    db.create_table("users")
-    db.insert("users", {
-        "name": "Alice",
-        "role": "Admin"
-    })
-    
-    results = db.query("SELECT * FROM users")`,
-
-            'Java': `// OverDrive-DB Java Example
-import com.afot.overdrive.OverDrive;
-
-OverDrive db = new OverDrive("myapp.odb");
-
-db.createTable("users");
-db.insert("users", "{\"name\":\"Alice\",\"role\":\"Admin\"}");
-
-String results = db.query("SELECT * FROM users");`
-        };
-
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                tabs.forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                codeBlock.textContent = snippets[tab.textContent];
-            });
-        });
-    </script>
+</script>
 </body>
-
 </html>

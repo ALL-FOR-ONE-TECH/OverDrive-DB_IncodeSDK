@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "overdrive-db"
-version = "1.3.0"
-description = "OverDrive-DB — High-performance embeddable hybrid SQL+NoSQL document database. Security hardened: encrypted open, parameterized queries, file permission hardening, thread-safe access."
+version = "1.4.0"
+description = "OverDrive-DB — High-performance embeddable hybrid SQL+NoSQL document database. ACID-compliant with 6 storage engines (Disk, RAM, Vector, Time-Series, Graph, Streaming). Features password-based encryption, auto-table creation, transaction callbacks, watchdog monitoring, and RAM engine caching."
 readme = "README.md"
 license = {text = "MIT OR Apache-2.0"}
 requires-python = ">=3.8"
@@ -53,11 +53,11 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK"
-Documentation = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/python-guide.md"
-Repository = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK"
-"Bug Tracker" = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/issues"
-Downloads = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases"
+Homepage = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
+Documentation = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/blob/main/docs/python-guide.md"
+Repository = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
+"Bug Tracker" = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/issues"
+Downloads = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases"
 
 [tool.setuptools.packages.find]
 include = ["overdrive*"]

@@ -1,7 +1,7 @@
 {
     "name": "@all-for-one-tech/overdrive-db",
-    "version": "1.0.0",
-    "description": "OverDrive-DB — High-performance embeddable hybrid SQL+NoSQL document database. A serverless, ACID-compliant alternative to SQLite for JSON data. Now with security hardening: encrypted open, parameterized queries, file permission hardening, and thread-safe access.",
+    "version": "1.4.0",
+    "description": "OverDrive-DB — High-performance embeddable hybrid SQL+NoSQL document database. ACID-compliant with 6 storage engines (Disk, RAM, Vector, Time-Series, Graph, Streaming). Features password-based encryption, auto-table creation, transaction callbacks, watchdog monitoring, and RAM engine caching.",
     "keywords": [
         "overdrive-db",
         "overdrivedb",
@@ -20,15 +20,19 @@
         "rust",
         "acid",
         "fast",
-        "serverless-db"
+        "serverless-db",
+        "ram-engine",
+        "watchdog",
+        "password-encryption",
+        "in-memory-database"
     ],
-    "homepage": "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK",
+    "homepage": "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK",
     "bugs": {
-        "url": "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/issues"
+        "url": "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK.git"
+        "url": "git+https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK.git"
     },
     "license": "MIT OR Apache-2.0",
     "author": "ALL FOR ONE TECH <admin@afot.in> (https://github.com/ALL-FOR-ONE-TECH)",

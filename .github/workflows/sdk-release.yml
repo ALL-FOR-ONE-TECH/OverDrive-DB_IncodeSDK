@@ -1,14 +1,12 @@
-# Build & Release — OverDrive InCode SDK
-#
-# Runs on the PUBLIC repo (ALL-FOR-ONE-TECH/OverDrive-DB_SDK)
-# The repo ROOT is the InCode SDK — there is NO IncodeSDK/ subdirectory.
+name: Build & Release SDK — v1.4
+
+# Runs on the OverDrive-DB_SDK repo (root = SDK, no IncodeSDK/ subdirectory)
 #
 # Pipeline:
-#   1. test    — Run ALL SDK tests (gate: release blocked until all pass)
-#   2. build   — Build native cdylib (overdrive.dll / .so / .dylib) — static CRT on Windows
+#   1. test    — All SDK tests must pass (gate)
+#   2. build   — Build native cdylib for all 5 platforms
 #   3. release — Publish binaries + checksums to GitHub Releases
-
-name: Build & Release SDK
+#   4. publish — Publish SDK packages to npm, PyPI, Maven, Go
 
 on:
   push:
@@ -17,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. v1.3.0)'
+        description: 'Release version (e.g. v1.4.0)'
         required: true
-        default: 'v1.3.0'
+        default: 'v1.4.0'
 
 env:
   CARGO_TERM_COLOR: always
@@ -35,42 +33,38 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          # Rust SDK ─────────────────────────────────────────
+          # Rust SDK
           - name: "Rust / ubuntu"
             os: ubuntu-latest
             job: rust
-
           - name: "Rust / windows"
             os: windows-latest
             job: rust
-
           - name: "Rust / macos"
             os: macos-latest
             job: rust
 
-          # Node.js SDK ─────────────────────────────────────
+          # Node.js SDK
           - name: "Node.js 18"
             os: ubuntu-latest
             job: nodejs
             node: '18'
-
           - name: "Node.js 20"
             os: ubuntu-latest
             job: nodejs
             node: '20'
 
-          # Python SDK ──────────────────────────────────────
+          # Python SDK
           - name: "Python 3.10"
             os: ubuntu-latest
             job: python
             python: '3.10'
-
           - name: "Python 3.12"
             os: ubuntu-latest
             job: python
             python: '3.12'
 
-          # Java SDK ────────────────────────────────────────
+          # Java SDK
           - name: "Java 17"
             os: ubuntu-latest
             job: java
@@ -79,8 +73,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       # ── Rust ──────────────────────────────────────────────
       - name: Install Rust toolchain
@@ -99,7 +92,6 @@ jobs:
 
       - name: Rust — cargo check + unit tests
         if: matrix.job == 'rust'
-        # cargo test --lib runs unit tests that do NOT require the native DLL
         run: |
           cargo check
           cargo test --lib -- --test-threads=1
@@ -111,22 +103,13 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      - name: Node.js — install dependencies
+      - name: Node.js — install + test
         if: matrix.job == 'nodejs'
         working-directory: nodejs
-        run: npm install
-
-      - name: Node.js — syntax check + tests
-        if: matrix.job == 'nodejs'
-        working-directory: nodejs
-        shell: bash
         run: |
+          npm install
           node --check index.js
-          if npm run test --if-present 2>/dev/null; then
-            echo "Tests passed ✅"
-          else
-            echo "No test script — syntax check passed ✅"
-          fi
+          node test/test_v14.js
 
       # ── Python ────────────────────────────────────────────
       - name: Setup Python
@@ -135,14 +118,18 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Python — install build tools
-        if: matrix.job == 'python'
-        run: pip install build
-
-      - name: Python — verify package builds
+      - name: Python — install + test + build
         if: matrix.job == 'python'
         working-directory: python
-        run: python -m build --no-isolation 2>/dev/null || python -m build
+        run: |
+          pip install pytest build
+          python -m pytest tests/test_error_handling.py \
+                           tests/test_helper_methods.py \
+                           tests/test_ram_engine.py \
+                           tests/test_transaction_callback.py \
+                           tests/test_watchdog.py \
+                           -v --tb=short
+          python -m build
 
       # ── Java ──────────────────────────────────────────────
       - name: Setup JDK
@@ -158,7 +145,7 @@ jobs:
         run: mvn -B compile -Dmaven.test.skip=true
 
 # ─────────────────────────────────────────────────────────────
-# JOB 2 — BUILD NATIVE LIBRARY
+# JOB 2 — BUILD NATIVE LIBRARY (all 5 platforms)
 # Runs only after ALL test jobs pass.
 # ─────────────────────────────────────────────────────────────
   build:
@@ -182,6 +169,13 @@ jobs:
             asset_name: liboverdrive-linux-x64.so
             rustflags: ""
 
+          # Linux ARM64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            built_name: liboverdrive.so
+            asset_name: liboverdrive-linux-arm64.so
+            rustflags: ""
+
           # macOS ARM64 (Apple Silicon)
           - os: macos-latest
             target: aarch64-apple-darwin
@@ -199,13 +193,18 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Install cross-compile tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -219,7 +218,8 @@ jobs:
       - name: Build release cdylib
         env:
           RUSTFLAGS: ${{ matrix.rustflags }}
-        run: cargo build --release --target ${{ matrix.target }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && 'aarch64-linux-gnu-gcc' || '' }}
+        run: cargo build --release --lib --target ${{ matrix.target }}
 
       - name: Stage artifact
         shell: bash
@@ -236,7 +236,7 @@ jobs:
           cp "$src" "dist/${{ matrix.asset_name }}"
           echo "✅ Staged: dist/${{ matrix.asset_name }} ($(du -sh dist/${{ matrix.asset_name }} | cut -f1))"
 
-      # Produce a generic overdrive.dll alias on Windows so consumers can use either name
+      # Produce a generic overdrive.dll alias on Windows
       - name: Produce overdrive.dll alias (Windows only)
         if: matrix.os == 'windows-latest'
         shell: bash
@@ -255,13 +255,15 @@ jobs:
 # Runs only after ALL builds succeed.
 # ─────────────────────────────────────────────────────────────
   release:
-    name: Create Release
+    name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Determine version tag
         id: version
         run: |
@@ -307,26 +309,36 @@ jobs:
 
             ### 📦 Downloads
 
-            | File | Platform | Notes |
-            |---|---|---|
-            | `overdrive.dll` | Windows x64 | Generic name — use this with `overdrive-db` crate |
-            | `overdrive-windows-x64.dll` | Windows x64 | Static CRT embedded (no vcruntime140 needed) |
-            | `liboverdrive-linux-x64.so` | Linux x64 | |
-            | `liboverdrive-macos-arm64.dylib` | macOS ARM64 (Apple Silicon) | |
-            | `liboverdrive-macos-x64.dylib` | macOS Intel x64 | |
+            | File | Platform |
+            |---|---|
+            | `overdrive.dll` | Windows x64 (generic name) |
+            | `overdrive-windows-x64.dll` | Windows x64 (static CRT — no vcruntime140 needed) |
+            | `liboverdrive-linux-x64.so` | Linux x64 |
+            | `liboverdrive-linux-arm64.so` | Linux ARM64 |
+            | `liboverdrive-macos-arm64.dylib` | macOS ARM64 (Apple Silicon) |
+            | `liboverdrive-macos-x64.dylib` | macOS Intel x64 |
 
             ---
 
             ### 🔐 Checksums (SHA-256)
             See `checksums-sha256.txt` below.
 
-            ### 📖 Docs
+            ### 📖 Documentation
             - [Quick Start](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/quickstart.md)
             - [API Reference](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/api-reference.md)
+            - [Migration Guide v1.3 → v1.4](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/blob/main/docs/migration-v1.3-to-v1.4.md)
+
+            ### 📦 Install via package managers
+            ```bash
+            pip install overdrive-db          # Python
+            npm install overdrive-db          # Node.js
+            go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/go@${{ steps.version.outputs.tag }}
+            ```
           files: |
             dist/overdrive.dll
             dist/overdrive-windows-x64.dll
             dist/liboverdrive-linux-x64.so
+            dist/liboverdrive-linux-arm64.so
             dist/liboverdrive-macos-arm64.dylib
             dist/liboverdrive-macos-x64.dylib
             dist/checksums-sha256.txt
@@ -334,3 +346,93 @@ jobs:
           draft: false
           prerelease: false
           fail_on_unmatched_files: false
+
+# ─────────────────────────────────────────────────────────────
+# JOB 4 — PUBLISH SDK PACKAGES
+# Runs after release is created.
+# ─────────────────────────────────────────────────────────────
+  publish-npm:
+    name: Publish to npm
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        working-directory: nodejs
+        run: |
+          echo "Publishing $(node -p \"require('./package.json').name\")@$(node -p \"require('./package.json').version\")"
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build and publish
+        working-directory: python
+        run: |
+          pip install build twine
+          python -m build
+          twine upload dist/* --skip-existing
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-maven:
+    name: Publish to GitHub Packages (Java)
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          server-id: github
+          settings-path: java
+
+      - name: Publish with Maven
+        working-directory: java
+        run: mvn -B deploy -s settings.xml -DskipTests -Dgpg.skip=true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-docs:
+    name: Deploy Documentation Site
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'docs-site/'
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4

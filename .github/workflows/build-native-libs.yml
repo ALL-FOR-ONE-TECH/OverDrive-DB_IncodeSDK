@@ -1,0 +1,265 @@
+name: Build Native Libraries
+
+# Builds overdrive.dll/.so/.dylib for all 5 supported platforms.
+# Triggered by version tags or manually.
+# For a full release pipeline (test → build → publish), use sdk-release.yml.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.4.0) — used for artifact naming only'
+        required: false
+        default: ''
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-x64:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-x64-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build Windows x64 DLL (static CRT)
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: cargo build --release --lib
+
+      - name: Stage artifact
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          # The IncodeSDK Cargo.toml names the lib "overdrive" → overdrive.dll
+          if (Test-Path "target/release/overdrive.dll") {
+            Copy-Item "target/release/overdrive.dll" "dist/overdrive.dll"
+          } elseif (Test-Path "target/release/overdrive_db.dll") {
+            Copy-Item "target/release/overdrive_db.dll" "dist/overdrive.dll"
+          }
+          $size = [math]::Round((Get-Item "dist/overdrive.dll").Length / 1MB, 2)
+          Write-Host "overdrive.dll: $size MB"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-x64
+          path: dist/overdrive.dll
+          retention-days: 30
+
+  build-linux-x64:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: linux-x64-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build Linux x64 .so
+        run: cargo build --release --lib
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          # IncodeSDK lib name is "overdrive" → liboverdrive.so
+          if [ -f "target/release/liboverdrive.so" ]; then
+            cp "target/release/liboverdrive.so" "dist/liboverdrive.so"
+          elif [ -f "target/release/liboverdrive_db.so" ]; then
+            cp "target/release/liboverdrive_db.so" "dist/liboverdrive.so"
+          fi
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-linux-x64
+          path: dist/liboverdrive.so
+          retention-days: 30
+
+  build-linux-arm64:
+    name: Linux ARM64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install cross-compile tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: linux-arm64-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build Linux ARM64 .so
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --release --lib --target aarch64-unknown-linux-gnu
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          if [ -f "target/aarch64-unknown-linux-gnu/release/liboverdrive.so" ]; then
+            cp "target/aarch64-unknown-linux-gnu/release/liboverdrive.so" "dist/liboverdrive-arm64.so"
+          elif [ -f "target/aarch64-unknown-linux-gnu/release/liboverdrive_db.so" ]; then
+            cp "target/aarch64-unknown-linux-gnu/release/liboverdrive_db.so" "dist/liboverdrive-arm64.so"
+          fi
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-linux-arm64
+          path: dist/liboverdrive-arm64.so
+          retention-days: 30
+
+  build-macos-x64:
+    name: macOS x64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-x64-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build macOS x64 .dylib
+        run: cargo build --release --lib --target x86_64-apple-darwin
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          if [ -f "target/x86_64-apple-darwin/release/liboverdrive.dylib" ]; then
+            cp "target/x86_64-apple-darwin/release/liboverdrive.dylib" "dist/liboverdrive.dylib"
+          elif [ -f "target/x86_64-apple-darwin/release/liboverdrive_db.dylib" ]; then
+            cp "target/x86_64-apple-darwin/release/liboverdrive_db.dylib" "dist/liboverdrive.dylib"
+          fi
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-macos-x64
+          path: dist/liboverdrive.dylib
+          retention-days: 30
+
+  build-macos-arm64:
+    name: macOS ARM64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-arm64-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build macOS ARM64 .dylib
+        run: cargo build --release --lib --target aarch64-apple-darwin
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          if [ -f "target/aarch64-apple-darwin/release/liboverdrive.dylib" ]; then
+            cp "target/aarch64-apple-darwin/release/liboverdrive.dylib" "dist/liboverdrive-arm64.dylib"
+          elif [ -f "target/aarch64-apple-darwin/release/liboverdrive_db.dylib" ]; then
+            cp "target/aarch64-apple-darwin/release/liboverdrive_db.dylib" "dist/liboverdrive-arm64.dylib"
+          fi
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-macos-arm64
+          path: dist/liboverdrive-arm64.dylib
+          retention-days: 30
+
+  # ── Create GitHub Release (tag pushes only) ────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [build-windows-x64, build-linux-x64, build-linux-arm64, build-macos-x64, build-macos-arm64]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect binaries
+        run: |
+          mkdir -p release
+          find artifacts/ -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) \
+            -exec cp {} release/ \;
+          ls -lah release/
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > checksums-sha256.txt
+          cat checksums-sha256.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/overdrive.dll
+            release/liboverdrive.so
+            release/liboverdrive-arm64.so
+            release/liboverdrive.dylib
+            release/liboverdrive-arm64.dylib
+            release/checksums-sha256.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
