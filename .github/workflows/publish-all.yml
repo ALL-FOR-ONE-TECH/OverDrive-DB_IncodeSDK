@@ -85,12 +85,12 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          server-id: github
-          settings-path: java
 
       - name: Publish with Maven
         working-directory: java
-        run: mvn -B deploy -s settings.xml -DskipTests -Dgpg.skip=true
+        run: |
+          echo "Publishing com.afot:overdrive-db:$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
+          mvn -B deploy -s settings.xml -DskipTests -Dgpg.skip=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
