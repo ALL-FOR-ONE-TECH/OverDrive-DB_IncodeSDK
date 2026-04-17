@@ -16,7 +16,7 @@
         Features password-based encryption, auto-table creation, transaction callbacks,
         watchdog monitoring, and RAM engine caching.
     </description>
-    <url>https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK</url>
+    <url>https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK</url>
 
     <licenses>
         <license>
@@ -40,10 +40,24 @@
     </developers>
 
     <scm>
-        <connection>scm:git:git://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK.git</connection>
-        <developerConnection>scm:git:ssh://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK.git</developerConnection>
-        <url>https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK</url>
+        <connection>scm:git:git://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK.git</connection>
+        <developerConnection>scm:git:ssh://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK.git</developerConnection>
+        <url>https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK</url>
     </scm>
+
+    <!-- Deploy to GitHub Packages -->
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub ALL-FOR-ONE-TECH Apache Maven Packages</name>
+            <url>https://maven.pkg.github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK</url>
+        </repository>
+        <snapshotRepository>
+            <id>github</id>
+            <name>GitHub ALL-FOR-ONE-TECH Apache Maven Packages</name>
+            <url>https://maven.pkg.github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK</url>
+        </snapshotRepository>
+    </distributionManagement>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
@@ -115,6 +129,40 @@
                         </manifest>
                     </archive>
                 </configuration>
+            </plugin>
+
+            <!-- Sources JAR — required for GitHub Packages -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Javadoc JAR — required for GitHub Packages -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.6.3</version>
+                <configuration>
+                    <doclint>none</doclint>
+                    <failOnError>false</failOnError>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
