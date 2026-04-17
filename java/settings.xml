@@ -1,27 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Maven Settings for OverDrive-DB SDK Deployment
-  
-  Copy this file to ~/.m2/settings.xml or use:
-    mvn deploy -s settings.xml
+
+  Usage in CI:
+    mvn deploy -s settings.xml -DskipTests -Dgpg.skip=true
+
+  Required environment variables:
+    GITHUB_TOKEN  — GitHub PAT with write:packages scope (set automatically in GitHub Actions)
 -->
 <settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
 
     <servers>
-        <!-- GitHub Packages -->
+        <!-- GitHub Packages — uses GITHUB_TOKEN from environment -->
         <server>
             <id>github</id>
-            <username>KarthikeyanV2K</username>
+            <username>ALL-FOR-ONE-TECH</username>
             <password>${env.GITHUB_TOKEN}</password>
-        </server>
-
-        <!-- Sonatype Central Portal (for future Maven Central publishing) -->
-        <server>
-            <id>central</id>
-            <username>ICAUhh</username>
-            <password>IKlPdajZG234WSHc6BR85CpfjVvvehpqJ</password>
         </server>
     </servers>
 
