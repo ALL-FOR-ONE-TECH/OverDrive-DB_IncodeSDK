@@ -1,6 +1,6 @@
 [package]
 name = "overdrive-db"
-version = "1.4.1"
+version = "1.4.2"
 edition = "2021"
 authors = ["AFOT <admin@afot.in>"]
 description = "OverDrive-DB — Embeddable hybrid SQL+NoSQL database. Like SQLite for JSON. #OverDriveDB #AFOT"
