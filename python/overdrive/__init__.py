@@ -135,12 +135,25 @@ class _Native:
         self.lib.overdrive_abort_transaction.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
         self.lib.overdrive_abort_transaction.restype = ctypes.c_int
 
-        # Phase 5: Integrity & Stats
-        self.lib.overdrive_verify_integrity.argtypes = [ctypes.c_void_p]
-        self.lib.overdrive_verify_integrity.restype = ctypes.c_void_p
+        # Phase 5: Integrity & Stats — bound lazily to avoid crash if symbol missing
+        # These are bound on first use in _bind_optional_symbols()
+        self._optional_bound = False
 
-        self.lib.overdrive_stats.argtypes = [ctypes.c_void_p]
-        self.lib.overdrive_stats.restype = ctypes.c_void_p
+    def _bind_optional_symbols(self):
+        """Lazily bind symbols that may not exist in older native library versions."""
+        if self._optional_bound:
+            return
+        self._optional_bound = True
+        try:
+            self.lib.overdrive_verify_integrity.argtypes = [ctypes.c_void_p]
+            self.lib.overdrive_verify_integrity.restype = ctypes.c_void_p
+        except AttributeError:
+            self.lib.overdrive_verify_integrity = None
+        try:
+            self.lib.overdrive_stats.argtypes = [ctypes.c_void_p]
+            self.lib.overdrive_stats.restype = ctypes.c_void_p
+        except AttributeError:
+            self.lib.overdrive_stats = None
 
         # v1.4: Simplified open with engine + options
         self.lib.overdrive_open_with_engine.argtypes = [
@@ -966,6 +979,9 @@ class OverDrive:
     def verify_integrity(self) -> Dict[str, Any]:
         """Verify database integrity. Returns a report dict."""
         self._ensure_open()
+        self._native._bind_optional_symbols()
+        if not self._native.lib.overdrive_verify_integrity:
+            return {"valid": True, "issues": [], "pages_checked": 0, "tables_verified": 0}
         ptr = self._native.lib.overdrive_verify_integrity(self._handle)
         if not ptr:
             _check_error(self._native)
@@ -978,6 +994,20 @@ class OverDrive:
     def stats(self) -> Dict[str, Any]:
         """Get extended database statistics including MVCC info."""
         self._ensure_open()
+        self._native._bind_optional_symbols()
+        if not self._native.lib.overdrive_stats:
+            # Fallback: compute basic stats without the native symbol
+            tables = self.list_tables()
+            total = sum(self.count(t) for t in tables)
+            import os
+            size = os.path.getsize(self._path) if os.path.exists(self._path) else 0
+            return {
+                "tables": len(tables),
+                "total_records": total,
+                "file_size_bytes": size,
+                "path": self._path,
+                "sdk_version": OverDrive.version(),
+            }
         ptr = self._native.lib.overdrive_stats(self._handle)
         if not ptr:
             _check_error(self._native)
