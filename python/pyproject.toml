@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "overdrive-db"
-version = "1.4.0"
+version = "1.4.1"
 description = "OverDrive-DB — High-performance embeddable hybrid SQL+NoSQL document database. ACID-compliant with 6 storage engines (Disk, RAM, Vector, Time-Series, Graph, Streaming). Features password-based encryption, auto-table creation, transaction callbacks, watchdog monitoring, and RAM engine caching."
 readme = "README.md"
 license = {text = "MIT OR Apache-2.0"}
