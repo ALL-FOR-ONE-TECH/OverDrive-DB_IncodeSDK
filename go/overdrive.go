@@ -24,6 +24,7 @@ package overdrive
 #cgo windows LDFLAGS: -L${SRCDIR}/lib -loverdrive
 #cgo linux LDFLAGS: -L${SRCDIR}/lib -loverdrive -lm -ldl -lpthread
 #cgo darwin LDFLAGS: -L${SRCDIR}/lib -loverdrive
+#cgo CFLAGS: -I${SRCDIR}
 
 #include <stdlib.h>
 
