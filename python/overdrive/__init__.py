@@ -37,7 +37,7 @@ _T = TypeVar("_T")
 
 
 def _find_library() -> str:
-    """Find the overdrive shared library."""
+    """Find the overdrive shared library, downloading if necessary."""
     system = platform.system()
     if system == "Windows":
         lib_name = "overdrive.dll"
@@ -58,7 +58,16 @@ def _find_library() -> str:
         if path.exists():
             return str(path)
 
-    # Try system path
+    # Not found locally — try to download from GitHub Releases
+    try:
+        from overdrive.download import ensure_binary
+        downloaded = ensure_binary(target_dir=str(Path(__file__).parent))
+        if downloaded and Path(downloaded).exists():
+            return downloaded
+    except Exception:
+        pass
+
+    # Try system path as last resort
     return lib_name
 
 
