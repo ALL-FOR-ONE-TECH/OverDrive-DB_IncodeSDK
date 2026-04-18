@@ -1,48 +1,59 @@
 /**
  * Postinstall script — downloads the correct native binary from GitHub Releases.
  * Runs automatically after `npm install overdrive-db`.
+ *
+ * Always downloads from the authoritative release — no stale bundled binaries.
  */
+
+'use strict';
 
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const REPO = 'ALL-FOR-ONE-TECH/OverDrive-DB_SDK';
-const VERSION = 'v1.0.1';
+// Always download from the main OverDrive-DB repo releases
+const REPO = 'karthikeyanV2K/OverDrive-DB';
+const VERSION = 'v1.4.2';
 
 function getBinaryInfo() {
     const platform = os.platform();
     const arch = os.arch();
 
     if (platform === 'win32') {
-        return { name: 'overdrive-windows-x64.dll', local: 'overdrive.dll' };
+        return { name: 'overdrive.dll', local: 'overdrive.dll' };
     } else if (platform === 'darwin') {
-        return { name: 'liboverdrive-macos-arm64.dylib', local: 'liboverdrive.dylib' };
+        const assetName = arch === 'arm64'
+            ? 'liboverdrive-macos-arm64.dylib'
+            : 'liboverdrive-macos-x64.dylib';
+        return { name: assetName, local: 'liboverdrive.dylib' };
     } else {
-        return { name: 'liboverdrive-linux-x64.so', local: 'liboverdrive.so' };
+        // Linux
+        const assetName = arch === 'arm64'
+            ? 'liboverdrive-linux-arm64.so'
+            : 'liboverdrive-linux-x64.so';
+        return { name: assetName, local: 'liboverdrive.so' };
     }
 }
 
 function download(url, dest) {
     return new Promise((resolve, reject) => {
-        const request = https.get(url, { headers: { 'User-Agent': 'overdrive-db-npm' } }, (response) => {
+        const req = https.get(url, { headers: { 'User-Agent': 'overdrive-db-npm' } }, (res) => {
             // Follow redirects (GitHub releases use 302)
-            if (response.statusCode === 301 || response.statusCode === 302) {
-                return download(response.headers.location, dest).then(resolve).catch(reject);
+            if (res.statusCode === 301 || res.statusCode === 302) {
+                return download(res.headers.location, dest).then(resolve).catch(reject);
             }
-
-            if (response.statusCode !== 200) {
-                reject(new Error(`Download failed: HTTP ${response.statusCode}`));
+            if (res.statusCode !== 200) {
+                reject(new Error(`Download failed: HTTP ${res.statusCode} for ${url}`));
                 return;
             }
-
             const file = fs.createWriteStream(dest);
-            response.pipe(file);
+            res.pipe(file);
             file.on('finish', () => file.close(resolve));
-            file.on('error', reject);
+            file.on('error', (err) => { fs.unlink(dest, () => {}); reject(err); });
         });
-        request.on('error', reject);
+        req.on('error', reject);
+        req.setTimeout(60000, () => { req.destroy(); reject(new Error('Download timeout')); });
     });
 }
 
@@ -51,20 +62,13 @@ async function main() {
     const libDir = path.join(__dirname, '..', 'lib');
     const destPath = path.join(libDir, local);
 
-    // Skip if binary already exists
-    if (fs.existsSync(destPath)) {
+    // Skip if valid binary already exists (> 1MB = real binary, not placeholder)
+    if (fs.existsSync(destPath) && fs.statSync(destPath).size > 1_000_000) {
         console.log(`✓ overdrive-db: Native binary already present (${local})`);
         return;
     }
 
-    // Also check if binary is in the package root
-    const rootPath = path.join(__dirname, '..', local);
-    if (fs.existsSync(rootPath)) {
-        console.log(`✓ overdrive-db: Native binary found at root (${local})`);
-        return;
-    }
-
-    console.log(`⬇ overdrive-db: Downloading ${name} from GitHub Releases...`);
+    console.log(`⬇ overdrive-db: Downloading ${name} from ${VERSION}...`);
 
     const url = `https://github.com/${REPO}/releases/download/${VERSION}/${name}`;
 
@@ -84,9 +88,8 @@ async function main() {
         console.log(`✓ overdrive-db: Downloaded ${local} (${(size / 1024 / 1024).toFixed(1)} MB)`);
     } catch (err) {
         console.warn(`⚠ overdrive-db: Auto-download failed: ${err.message}`);
-        console.warn(`  Please download manually from:`);
-        console.warn(`  https://github.com/${REPO}/releases/tag/${VERSION}`);
-        console.warn(`  Place the binary in: ${libDir}/`);
+        console.warn(`  Download manually from: https://github.com/${REPO}/releases/tag/${VERSION}`);
+        console.warn(`  Place '${local}' in: ${libDir}/`);
         // Don't fail the install — user can download manually
     }
 }
