@@ -30,6 +30,12 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = []
+# Enable FFI exports for building the native shared library (overdrive.dll/.so/.dylib)
+ffi = []
+# Enable all storage engines (used when building the SDK native library)
+all-engines = []
+# Regenerate the C header from Rust FFI (requires cbindgen)
+generate-header = []
 
 [dependencies]
 # Dynamic FFI loading — loads prebuilt native library at runtime
@@ -42,7 +48,8 @@ chrono = { version = "0.4", features = ["serde"] }
 zeroize = { version = "1", features = ["derive"] }
 
 [build-dependencies]
-cbindgen = "0.28"
+# cbindgen is optional — only needed when regenerating the C header
+# cargo build --features generate-header
 
 [dev-dependencies]
 tempfile = "3.10"
