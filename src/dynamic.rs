@@ -1,7 +1,7 @@
 //! Dynamic FFI loader — loads the OverDrive native library at runtime.
 //!
-//! Used when the SDK is installed via crates.io (without engine source code).
-//! The prebuilt binary must be downloaded from GitHub Releases.
+//! On first use, if the native library is not found locally, it is automatically
+//! downloaded from the official GitHub Release.
 
 use libloading::{Library, Symbol};
 use std::ffi::{CStr, CString};
@@ -11,53 +11,150 @@ use std::sync::OnceLock;
 
 static LIB: OnceLock<Library> = OnceLock::new();
 
-/// Find and load the native library.
+const RELEASE_VERSION: &str = "v1.4.2";
+const RELEASE_REPO: &str = "karthikeyanV2K/OverDrive-DB";
+
+fn lib_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "overdrive.dll"
+    } else if cfg!(target_os = "macos") {
+        "liboverdrive.dylib"
+    } else {
+        "liboverdrive.so"
+    }
+}
+
+fn release_asset_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "overdrive.dll"
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "liboverdrive-macos-arm64.dylib"
+    } else if cfg!(target_os = "macos") {
+        "liboverdrive-macos-x64.dylib"
+    } else if cfg!(target_arch = "aarch64") {
+        "liboverdrive-linux-arm64.so"
+    } else {
+        "liboverdrive-linux-x64.so"
+    }
+}
+
+/// Download the native library from GitHub Releases.
+fn download_library(dest: &std::path::Path) -> Result<(), String> {
+    let asset = release_asset_name();
+    let url = format!(
+        "https://github.com/{}/releases/download/{}/{}",
+        RELEASE_REPO, RELEASE_VERSION, asset
+    );
+
+    eprintln!("overdrive-db: Downloading {} from {}...", asset, RELEASE_VERSION);
+
+    // Use curl or wget if available, otherwise use a simple HTTP client
+    #[cfg(target_os = "windows")]
+    {
+        let status = std::process::Command::new("powershell")
+            .args([
+                "-Command",
+                &format!(
+                    "Invoke-WebRequest -Uri '{}' -OutFile '{}' -UseBasicParsing",
+                    url,
+                    dest.display()
+                ),
+            ])
+            .status()
+            .map_err(|e| format!("Failed to run PowerShell: {}", e))?;
+        if !status.success() {
+            return Err(format!("Download failed for {}", url));
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Try curl first, then wget
+        let curl_result = std::process::Command::new("curl")
+            .args(["-fsSL", "-o", &dest.to_string_lossy(), &url])
+            .status();
+
+        if curl_result.map(|s| !s.success()).unwrap_or(true) {
+            let wget_result = std::process::Command::new("wget")
+                .args(["-q", "-O", &dest.to_string_lossy(), &url])
+                .status();
+            if wget_result.map(|s| !s.success()).unwrap_or(true) {
+                return Err(format!(
+                    "Download failed. Install curl or wget, or download manually:\n  {}",
+                    url
+                ));
+            }
+        }
+    }
+
+    let size = std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
+    if size < 100_000 {
+        return Err(format!(
+            "Downloaded file is too small ({} bytes) — download may have failed.\n  URL: {}",
+            size, url
+        ));
+    }
+
+    eprintln!(
+        "overdrive-db: Downloaded {} ({:.1} MB)",
+        lib_name(),
+        size as f64 / 1_048_576.0
+    );
+    Ok(())
+}
+
+/// Find and load the native library, downloading if necessary.
 fn load_library() -> &'static Library {
     LIB.get_or_init(|| {
-        let lib_name = if cfg!(target_os = "windows") {
-            "overdrive.dll"
-        } else if cfg!(target_os = "macos") {
-            "liboverdrive.dylib"
-        } else {
-            "liboverdrive.so"
-        };
+        let name = lib_name();
 
-        // Search paths
+        // Search paths — check these before downloading
+        let exe_dir = std::env::current_exe()
+            .unwrap_or_default()
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .to_path_buf();
+
         let search_dirs: Vec<PathBuf> = vec![
             std::env::current_dir().unwrap_or_default(),
             std::env::current_dir().unwrap_or_default().join("lib"),
-            std::env::current_exe()
-                .unwrap_or_default()
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .to_path_buf(),
+            exe_dir.clone(),
+            exe_dir.join("lib"),
         ];
 
         for dir in &search_dirs {
-            let path = dir.join(lib_name);
-            if path.exists() {
+            let path = dir.join(name);
+            if path.exists() && std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) > 100_000 {
                 unsafe {
-                    return Library::new(&path).unwrap_or_else(|e| {
-                        panic!(
-                            "overdrive-sdk: Found {} but failed to load: {}\n\
-                             Download from: https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases",
-                            path.display(), e
-                        )
-                    });
+                    if let Ok(lib) = Library::new(&path) {
+                        return lib;
+                    }
                 }
             }
         }
 
-        // Try system library path
+        // Not found locally — try to download
+        let download_dir = std::env::current_dir().unwrap_or_default();
+        let download_path = download_dir.join(name);
+
+        if let Err(e) = download_library(&download_path) {
+            panic!(
+                "overdrive-db: Native library '{}' not found and auto-download failed: {}\n\n\
+                 Download manually from:\n  \
+                 https://github.com/{}/releases/tag/{}\n\n\
+                 Place '{}' in your project directory.",
+                name, e, RELEASE_REPO, RELEASE_VERSION, name
+            );
+        }
+
+        // Try to load the downloaded library
         unsafe {
-            Library::new(lib_name).unwrap_or_else(|_| {
+            Library::new(&download_path).unwrap_or_else(|e| {
                 panic!(
-                    "overdrive-sdk: Native library '{}' not found!\n\n\
-                     Download it from:\n  \
-                     https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK/releases/latest\n\n\
-                     Place the binary in your project directory or on your system PATH.\n\
-                     See: https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_SDK#install",
-                    lib_name
+                    "overdrive-db: Downloaded '{}' but failed to load: {}\n\
+                     The file may be corrupt. Delete it and try again.",
+                    download_path.display(),
+                    e
                 )
             })
         }
