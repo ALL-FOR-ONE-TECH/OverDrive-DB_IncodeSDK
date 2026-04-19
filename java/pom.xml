@@ -6,7 +6,7 @@
 
     <groupId>com.afot</groupId>
     <artifactId>overdrive-db</artifactId>
-    <version>1.4.2</version>
+    <version>1.4.3</version>
     <packaging>jar</packaging>
 
     <name>OverDrive-DB Java SDK</name>
