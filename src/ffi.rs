@@ -399,8 +399,18 @@ pub unsafe extern "C" fn overdrive_query(
     let sql = match c_str_to_string(sql) { Some(s) => s, None => return ptr::null_mut() };
 
     // Build a temporary shell pointing at the same data directory the db is already using.
-    // We execute the SQL and serialise the text output as JSON { "result": "..." }.
-    let mut shell = Shell::new(".");
+    // We derive databases_dir from the handle's db_path and auto-USE the database.
+    let h = &*handle;
+    let db_dir = h.db_path.parent()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| ".".to_string());
+    let mut shell = Shell::new(&db_dir);
+
+    // Auto-select the database by its filename stem (e.g. "myapp" from "myapp.odb")
+    if let Some(stem) = h.db_path.file_stem().and_then(|s| s.to_str()) {
+        let _ = shell.parse_and_execute(&format!("USE {};", stem));
+    }
+
     match shell.parse_and_execute(&sql) {
         Ok(output) => {
             let json = serde_json::json!({ "result": output, "ok": true });
