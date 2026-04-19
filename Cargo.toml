@@ -32,7 +32,7 @@ exclude = [
 
 [lib]
 name = "overdrive"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [features]
 default = []

@@ -28,15 +28,16 @@ fn main() {
         ("liboverdrive.so", "overdrive")
     };
 
-    // If lib/ directory exists and contains the native library, emit linker paths
-    let lib_path = lib_dir.join(lib_file);
-    if lib_dir.exists() {
+    // Only emit native linking directives when building the native FFI library.
+    // Normal SDK usage loads the DLL at runtime via libloading — no .lib needed.
+    if lib_dir.exists() && cfg!(feature = "ffi") {
         println!("cargo:rustc-link-search=native={}", lib_dir.display());
         println!("cargo:rustc-link-lib=dylib={}", link_name);
     }
 
     // Copy the native library to the output directory so it's found at runtime
     // This helps `cargo run` and `cargo test` work without manual setup
+    let lib_path = lib_dir.join(lib_file);
     if lib_path.exists() {
         // Copy to OUT_DIR/../../../ (the target/debug or target/release directory)
         // Walk up from OUT_DIR (which is target/{profile}/build/{pkg}/out)

@@ -30,7 +30,6 @@
 
 pub mod result;
 pub mod query_engine;
-pub mod ffi;
 pub mod shared;
 mod dynamic;
 
