@@ -1354,6 +1354,9 @@ class OverDrive:
         import shutil
         self._ensure_open()
         self.sync()
+        # Create parent directory if it doesn't exist
+        dest_dir = os.path.dirname(os.path.abspath(dest_path))
+        os.makedirs(dest_dir, exist_ok=True)
         shutil.copy2(self._path, dest_path)
         # Also backup WAL if exists
         wal_src = self._path + ".wal"
