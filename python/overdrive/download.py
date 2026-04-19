@@ -18,10 +18,10 @@ import sys
 import urllib.request
 from pathlib import Path
 
-# Always download from the main OverDrive-DB repo releases
+# Always download from the official IncodeSDK repo releases
 # This is the authoritative source for the native library
-REPO = "karthikeyanV2K/OverDrive-DB"
-VERSION = "v1.4.2"
+REPO = "ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
+VERSION = "v1.4.3"
 
 # Platform → (release asset name, local file name)
 PLATFORM_MAP = {

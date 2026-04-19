@@ -11,8 +11,8 @@ use std::sync::OnceLock;
 
 static LIB: OnceLock<Library> = OnceLock::new();
 
-const RELEASE_VERSION: &str = "v1.4.2";
-const RELEASE_REPO: &str = "karthikeyanV2K/OverDrive-DB";
+const RELEASE_VERSION: &str = "v1.4.3";
+const RELEASE_REPO: &str = "ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK";
 
 fn lib_name() -> &'static str {
     if cfg!(target_os = "windows") {

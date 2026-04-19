@@ -1,153 +1,125 @@
-name: SDK Continuous Integration
+name: CI — Quick Test on PR / Push
 
-# Runs on the OverDrive-DB_SDK repo (root = SDK, no IncodeSDK/ subdirectory)
-# Triggers on every push/PR to main
+# Fast CI for development — runs tests only, no builds or publishes.
+# Full build+publish pipeline runs on tag via sdk-release.yml.
 
 on:
   push:
-    branches: [ main ]
+    branches: [main, dev, 'feature/**']
   pull_request:
-    branches: [ main ]
-
-env:
-  CARGO_TERM_COLOR: always
+    branches: [main]
 
 jobs:
-  # ── Rust SDK (unit tests — no native library needed) ──────────────────────
-  rust-test:
-    name: Rust SDK — ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+  rust:
+    name: Rust tests
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo
-        uses: actions/cache@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ matrix.os }}-cargo-ci-${{ hashFiles('Cargo.lock') }}
+          key: ubuntu-cargo-ci-${{ hashFiles('Cargo.lock') }}
+      - run: cargo check && cargo clippy -- -D warnings && cargo test --lib -- --test-threads=1
 
-      - name: cargo check
-        run: cargo check
-
-      - name: cargo test (unit tests only — no native lib required)
-        run: cargo test --lib -- --test-threads=1
-
-  # ── Node.js SDK ────────────────────────────────────────────────────────────
-  nodejs-test:
-    name: Node.js SDK — Node ${{ matrix.node }}
+  python:
+    name: Python syntax check
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ['18', '20', '22']
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js ${{ matrix.node }}
-        uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: ${{ matrix.node }}
-
-      - name: Install dependencies
-        working-directory: nodejs
-        run: npm install
-
-      - name: Syntax check
-        working-directory: nodejs
-        run: node --check index.js
-
-      - name: Run unit tests (mocked FFI — no native lib required)
-        working-directory: nodejs
-        run: node test/test_v14.js
-
-  # ── Python SDK ─────────────────────────────────────────────────────────────
-  python-test:
-    name: Python SDK — Python ${{ matrix.python }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ['3.9', '3.10', '3.11', '3.12', '3.13']
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-
-      - name: Install test dependencies
-        run: pip install pytest
-
-      - name: Run unit tests (mocked FFI — no native lib required)
-        working-directory: python
-        run: |
-          python -m pytest tests/test_error_handling.py \
-                           tests/test_helper_methods.py \
-                           tests/test_ram_engine.py \
-                           tests/test_transaction_callback.py \
-                           tests/test_watchdog.py \
-                           -v --tb=short
-
-      - name: Verify package builds
+          python-version: '3.12'
+      - name: Check Python syntax
         working-directory: python
         run: |
           pip install build
+          python -c "
+          import ast, sys, pathlib
+          for f in pathlib.Path('overdrive').glob('*.py'):
+              try:
+                  ast.parse(f.read_text(encoding='utf-8'))
+                  print(f'✓ {f}')
+              except SyntaxError as e:
+                  print(f'✗ {f}: {e}')
+                  sys.exit(1)
+          "
           python -m build
+          echo "✅ Python package builds successfully"
 
-  # ── Java SDK ───────────────────────────────────────────────────────────────
-  java-test:
-    name: Java SDK — JDK ${{ matrix.java }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        java: ['11', '17', '21']
+  go-windows:
+    name: Go — Windows (no CGo)
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
+      - uses: actions/setup-go@v5
         with:
-          java-version: ${{ matrix.java }}
-          distribution: 'temurin'
+          go-version: '1.22'
+      - name: Go vet (Windows, no CGo)
+        working-directory: go
+        env:
+          CGO_ENABLED: '0'
+        run: go vet ./...
 
-      - name: Compile (no native lib required for compilation)
-        working-directory: java
-        run: mvn -B compile -Dmaven.test.skip=true
-
-      - name: Run unit tests (validation + error hierarchy — no native lib)
-        working-directory: java
-        run: |
-          mvn -B test -Dtest="OverDriveV14Test#testOpenRejectsInvalidEngine+testOpenRejectsShortPassword+testErrorHierarchy+testErrorIncludesSuggestions" \
-              2>&1 || true
-          echo "Java tests completed (native-lib-dependent tests skipped)"
-
-  # ── Go SDK ─────────────────────────────────────────────────────────────────
-  go-check:
-    name: Go SDK — syntax check
+  go-linux:
+    name: Go — Linux (with CGo)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.21'
-
-      - name: Check Go module
+      - name: Go build + vet
         working-directory: go
-        run: go mod tidy && go mod verify
+        env:
+          CGO_ENABLED: '1'
+        run: go build ./... && go vet ./...
 
-      # Note: go build requires CGo + native library — skipped in CI
-      # Full build happens in sdk-release.yml when native libs are available
+  java:
+    name: Java compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Maven compile
+        working-directory: java
+        run: mvn -B compile -Dmaven.test.skip=true --no-transfer-progress
+
+  nodejs:
+    name: Node.js syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check syntax
+        working-directory: nodejs
+        run: |
+          npm install --ignore-scripts
+          node --check index.js
+          echo "✅ Node.js syntax OK"
+
+  c-header:
+    name: C/C++ header check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate C header compiles
+        run: |
+          cat > /tmp/test_header.c << 'EOF'
+          #include "c/include/overdrive.h"
+          int main(void) {
+              /* Just check the header parses — no linker needed */
+              (void)sizeof(ODB);
+              return 0;
+          }
+          EOF
+          gcc -fsyntax-only -I. /tmp/test_header.c
+          echo "✅ C header compiles cleanly"

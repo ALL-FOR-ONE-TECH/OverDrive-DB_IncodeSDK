@@ -54,30 +54,37 @@ pip install overdrive-db
 npm install overdrive-db
 ```
 
-**Java (Maven):**
+**Java (GitHub Packages):**
 ```xml
+<!-- Step 1: Add to ~/.m2/settings.xml (see INSTALL.md for auth setup) -->
+<!-- Step 2: Add repository to pom.xml -->
+<repositories>
+  <repository>
+    <id>github-overdrive</id>
+    <url>https://maven.pkg.github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK</url>
+  </repository>
+</repositories>
+<!-- Step 3: Add dependency -->
 <dependency>
     <groupId>com.afot</groupId>
     <artifactId>overdrive-db</artifactId>
-    <version>1.4.0</version>
+    <version>1.4.3</version>
 </dependency>
 ```
+> ⚠️ GitHub Packages requires a PAT token for auth. See [INSTALL.md](INSTALL.md#java) for full setup.
 
-**Go:**
+**Go (Windows — no CGo/GCC needed ✅):**
 ```bash
-go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go@v1.4.0
+go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go@latest
 ```
 
 **Rust:**
 ```toml
 [dependencies]
-overdrive-db = "1.4.0"
+overdrive-db = "1.4.3"
 ```
 
-> **Note:** The Rust crate dynamically loads the prebuilt native library at runtime.
-> Download `overdrive.dll` / `liboverdrive.so` / `liboverdrive.dylib` from
-> [GitHub Releases](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases/latest)
-> and place it in your project directory.
+> **Auto-setup:** `pip install`, `npm install`, and `cargo add` all bundle or auto-download the native library. See [INSTALL.md](INSTALL.md) for full details.
 
 ---
 

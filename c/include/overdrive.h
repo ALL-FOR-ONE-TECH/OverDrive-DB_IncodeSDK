@@ -1,5 +1,5 @@
 /**
- * OverDrive InCode SDK — C/C++ Header (v1.4.0)
+ * OverDrive InCode SDK — C/C++ Header (v1.4.3)
  *
  * Embeddable hybrid SQL+NoSQL document database. Like SQLite for JSON.
  *
@@ -10,6 +10,11 @@
  *
  * Download from:
  *   https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases/latest
+ *
+ * CMake integration:
+ *   find_library(OVERDRIVE_LIB overdrive HINTS ${CMAKE_SOURCE_DIR}/lib)
+ *   target_link_libraries(your_target ${OVERDRIVE_LIB})
+ *   target_include_directories(your_target PRIVATE ${CMAKE_SOURCE_DIR}/include)
  *
  * Memory rules:
  *   - Every char* returned by overdrive_* MUST be freed with overdrive_free_string()
@@ -61,6 +66,16 @@ ODB overdrive_open(const char* path);
  * Returns NULL on error — check overdrive_last_error().
  */
 ODB overdrive_open_with_engine(const char* path, const char* engine, const char* options_json);
+
+/**
+ * Open (or create) a password-protected database (v1.4).
+ *
+ * Derives the AES-256-GCM encryption key using Argon2id.
+ * password must be at least 8 characters. Pass NULL for no encryption.
+ *
+ * Returns NULL on error — check overdrive_last_error().
+ */
+ODB overdrive_open_with_password(const char* path, const char* password);
 
 /**
  * Close the database and release all resources.

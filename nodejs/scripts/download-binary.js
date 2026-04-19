@@ -12,9 +12,9 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-// Always download from the main OverDrive-DB repo releases
-const REPO = 'karthikeyanV2K/OverDrive-DB';
-const VERSION = 'v1.4.2';
+// Always download from the official IncodeSDK repo releases
+const REPO = 'ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK';
+const VERSION = 'v1.4.3';
 
 function getBinaryInfo() {
     const platform = os.platform();

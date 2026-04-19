@@ -1,19 +1,43 @@
+# Rust build artifacts
 /target/
+# Cargo.lock is intentionally excluded for libraries (includes as apps)
 Cargo.lock
+
+# Database files (never commit test databases)
 *.odb
 *.odb-wal
 *.odb-shm
-.DS_Store
-thumbs.db
 
-# Dependencies and Build Artifacts
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Build artifacts
 /java/jdk17/
 /java/maven/
 /java/target/
 /python/dist/
+/python/*.egg-info/
 /python/overdrive_db.egg-info/
+/python/.pytest_cache/
 /nodejs/node_modules/
-/publish-all.ps1
-/lib/
 
-my_data\.credentials
+# Go
+/go/go.sum.bak
+
+# Publish script (local use only)
+publish-all.ps1
+
+# Test data
+my_data/.credentials
+my_data/
+
+# NOTE: lib/ is intentionally NOT ignored.
+# It contains prebuilt native libraries bundled with the crate.
+# Temporary downloads go to lib/.tmp/ which IS ignored:
+lib/.tmp/
+
+# Editor
+.vscode/
+.idea/
+*.swp

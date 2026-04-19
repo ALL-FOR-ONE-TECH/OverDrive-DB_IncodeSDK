@@ -1,87 +1,42 @@
-// Package overdrive provides Go bindings for the OverDrive InCode SDK (v1.4).
+// Package overdrive provides Go bindings for the OverDrive InCode SDK (v1.4.3).
 //
 // Embeddable document database — like SQLite for JSON.
 //
-// Simplified API (v1.4):
+// This package uses platform-native dynamic loading (no CGo required!):
+//   - Windows: LoadLibraryW / GetProcAddress (syscall)
+//   - Linux/macOS: dlopen / dlsym (purego)
 //
-//	db, err := overdrive.Open("myapp.odb", overdrive.WithAutoCreateTables(true))
+// Install:
+//
+//	go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go@latest
+//
+// Usage:
+//
+//	db, err := overdrive.Open("myapp.odb")
 //	if err != nil { log.Fatal(err) }
 //	defer db.Close()
 //
 //	id, _ := db.Insert("users", map[string]any{"name": "Alice", "age": 30})
 //	results, _ := db.Query("SELECT * FROM users WHERE age > 25")
+//	fmt.Println(results.Rows)
 //
 // Password-protected:
 //
 //	db, _ := overdrive.Open("secure.odb", overdrive.WithPassword("my-secret-pass"))
 //
-// RAM engine:
+// RAM engine for sub-microsecond caching:
 //
 //	db, _ := overdrive.Open("cache.odb", overdrive.WithEngine("RAM"))
 package overdrive
-
-/*
-#cgo windows LDFLAGS: -L${SRCDIR}/lib -loverdrive
-#cgo linux LDFLAGS: -L${SRCDIR}/lib -loverdrive -lm -ldl -lpthread
-#cgo darwin LDFLAGS: -L${SRCDIR}/lib -loverdrive
-#cgo CFLAGS: -I${SRCDIR}
-
-#include <stdlib.h>
-
-// OverDrive C FFI declarations
-typedef void* ODB;
-
-// Core (v1.3)
-extern ODB   overdrive_open(const char* path);
-extern void   overdrive_close(ODB db);
-extern void   overdrive_sync(ODB db);
-extern int    overdrive_create_table(ODB db, const char* name);
-extern int    overdrive_drop_table(ODB db, const char* name);
-extern char*  overdrive_list_tables(ODB db);
-extern int    overdrive_table_exists(ODB db, const char* name);
-extern char*  overdrive_insert(ODB db, const char* table, const char* json_doc);
-extern char*  overdrive_get(ODB db, const char* table, const char* id);
-extern int    overdrive_update(ODB db, const char* table, const char* id, const char* json_updates);
-extern int    overdrive_delete(ODB db, const char* table, const char* id);
-extern int    overdrive_count(ODB db, const char* table);
-extern char*  overdrive_query(ODB db, const char* sql);
-extern char*  overdrive_search(ODB db, const char* table, const char* text);
-extern const char* overdrive_last_error();
-extern void   overdrive_free_string(char* s);
-extern const char* overdrive_version();
-
-// v1.4: Transactions
-extern unsigned long long overdrive_begin_transaction(ODB db, int isolation_level);
-extern int    overdrive_commit_transaction(ODB db, unsigned long long txn_id);
-extern int    overdrive_abort_transaction(ODB db, unsigned long long txn_id);
-
-// v1.4: Integrity & Stats
-extern char*  overdrive_verify_integrity(ODB db);
-extern char*  overdrive_stats(ODB db);
-
-// v1.4: Engine & auto-create
-extern ODB    overdrive_open_with_engine(const char* path, const char* engine, const char* options_json);
-extern int    overdrive_set_auto_create_tables(ODB db, int enabled);
-extern const char* overdrive_get_error_details();
-extern int    overdrive_create_table_with_engine(ODB db, const char* name, const char* engine);
-
-// v1.4: RAM engine
-extern int    overdrive_snapshot(ODB db, const char* path);
-extern int    overdrive_restore(ODB db, const char* path);
-extern char*  overdrive_memory_usage(ODB db);
-
-// v1.4: Watchdog
-extern char*  overdrive_watchdog(const char* path);
-*/
-import "C"
 
 import (
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -89,7 +44,19 @@ import (
 	"unsafe"
 )
 
-// ── Error Types (Task 30) ──────────────────────
+// ─────────────────────────────────────────────
+// Platform loader interface
+// ─────────────────────────────────────────────
+
+// libHandle is the platform-native library handle abstraction.
+type libHandle interface {
+	sym(name string) (unsafe.Pointer, error)
+	close()
+}
+
+// ─────────────────────────────────────────────
+// Error Types
+// ─────────────────────────────────────────────
 
 // OverDriveError is the base interface for all OverDrive errors.
 type OverDriveError interface {
@@ -172,11 +139,13 @@ func newTypedError(msg, code, ctx string, suggestions []string, docLink string) 
 	return &base
 }
 
-// ── Core Types ─────────────────────────────────
+// ─────────────────────────────────────────────
+// Core Types
+// ─────────────────────────────────────────────
 
 // DB represents an open OverDrive database.
 type DB struct {
-	handle C.ODB
+	handle uintptr // opaque ODB* from native lib
 	path   string
 }
 
@@ -224,7 +193,9 @@ type TransactionHandle struct {
 	Active    bool
 }
 
-// ── OpenOption (Task 25) ───────────────────────
+// ─────────────────────────────────────────────
+// OpenOption (functional options)
+// ─────────────────────────────────────────────
 
 // OpenOptions holds configuration for opening a database.
 type OpenOptions struct {
@@ -263,62 +234,261 @@ func WithTableEngine(engine string) TableOption {
 	return func(o *tableOpts) { o.engine = engine }
 }
 
-// ── Internal helpers ───────────────────────────
+// ─────────────────────────────────────────────
+// Native library loader (no CGo)
+// ─────────────────────────────────────────────
 
-func lastError() error {
-	msg := C.overdrive_last_error()
-	if msg == nil {
-		return newError("unknown overdrive error")
+const (
+	releaseVersion = "v1.4.3"
+	releaseRepo    = "ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
+)
+
+var (
+	globalLib     libHandle
+	globalLibOnce sync.Once
+	globalLibErr  error
+)
+
+// libName returns the platform-specific native library filename.
+func libName() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "overdrive.dll"
+	case "darwin":
+		return "liboverdrive.dylib"
+	default:
+		return "liboverdrive.so"
 	}
-	return newError(C.GoString(msg))
 }
 
-func checkErrorStructured() error {
-	detailsRaw := C.overdrive_get_error_details()
-	if detailsRaw != nil {
-		ds := C.GoString(detailsRaw)
-		if ds != "" {
-			var data map[string]any
-			if err := json.Unmarshal([]byte(ds), &data); err == nil {
-				code, _ := data["code"].(string)
-				msg, _ := data["message"].(string)
-				ctx, _ := data["context"].(string)
-				docLink, _ := data["doc_link"].(string)
-				var suggestions []string
-				if rawSugg, ok := data["suggestions"].([]any); ok {
-					for _, s := range rawSugg {
-						if str, ok := s.(string); ok {
-							suggestions = append(suggestions, str)
+// releaseAssetName returns the GitHub Release asset name for this platform.
+func releaseAssetName() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "overdrive.dll"
+	case "darwin":
+		if runtime.GOARCH == "arm64" {
+			return "liboverdrive-macos-arm64.dylib"
+		}
+		return "liboverdrive-macos-x64.dylib"
+	default: // linux
+		if runtime.GOARCH == "arm64" {
+			return "liboverdrive-linux-arm64.so"
+		}
+		return "liboverdrive-linux-x64.so"
+	}
+}
+
+// downloadLibrary downloads the native library from GitHub Releases.
+func downloadLibrary(dest string) error {
+	asset := releaseAssetName()
+	url := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s",
+		releaseRepo, releaseVersion, asset)
+
+	fmt.Fprintf(os.Stderr, "overdrive: Downloading %s from %s...\n", asset, releaseVersion)
+
+	resp, err := http.Get(url) //nolint:noctx
+	if err != nil {
+		return fmt.Errorf("HTTP GET failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("server returned %d for %s", resp.StatusCode, url)
+	}
+
+	f, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("cannot create %s: %w", dest, err)
+	}
+	defer f.Close()
+
+	n, err := io.Copy(f, resp.Body)
+	if err != nil {
+		return fmt.Errorf("download write failed: %w", err)
+	}
+	if n < 100_000 {
+		return fmt.Errorf("downloaded file too small (%d bytes) — may be corrupt", n)
+	}
+
+	fmt.Fprintf(os.Stderr, "overdrive: Downloaded %s (%.1f MB)\n", libName(), float64(n)/1_048_576)
+	return nil
+}
+
+// loadLibrary finds and loads the native library, downloading if necessary.
+// Called once via sync.Once.
+func loadLibrary() (libHandle, error) {
+	name := libName()
+
+	// Search directories (in order of preference)
+	execDir, _ := os.Executable()
+	execDir = filepath.Dir(execDir)
+
+	cwd, _ := os.Getwd()
+
+	searchDirs := []string{
+		cwd,
+		filepath.Join(cwd, "lib"),
+		execDir,
+		filepath.Join(execDir, "lib"),
+	}
+
+	// Also check the directory of the caller's binary (cross-platform)
+	for _, dir := range searchDirs {
+		p := filepath.Join(dir, name)
+		info, err := os.Stat(p)
+		if err == nil && info.Size() > 100_000 {
+			lib, err := openLib(p)
+			if err == nil {
+				return lib, nil
+			}
+		}
+	}
+
+	// Not found locally — download to cwd
+	downloadPath := filepath.Join(cwd, name)
+	if err := downloadLibrary(downloadPath); err != nil {
+		return nil, fmt.Errorf(
+			"native library '%s' not found and auto-download failed: %w\n"+
+				"Download manually from: https://github.com/%s/releases/tag/%s\n"+
+				"Place '%s' in your project directory or add it to PATH.",
+			name, err, releaseRepo, releaseVersion, name,
+		)
+	}
+
+	lib, err := openLib(downloadPath)
+	if err != nil {
+		return nil, fmt.Errorf("downloaded '%s' but failed to load: %w", name, err)
+	}
+	return lib, nil
+}
+
+// getLib returns the global library handle, loading if necessary.
+func getLib() (libHandle, error) {
+	globalLibOnce.Do(func() {
+		globalLib, globalLibErr = loadLibrary()
+	})
+	return globalLib, globalLibErr
+}
+
+// ─────────────────────────────────────────────
+// Helper: C string ↔ Go string (unsafe, no CGo)
+// ─────────────────────────────────────────────
+
+// cstring allocates a null-terminated C string in Go-managed memory.
+// Returns a pointer and a cleanup func (call deferred).
+func cstring(s string) (uintptr, func()) {
+	bs := append([]byte(s), 0)
+	ptr := uintptr(unsafe.Pointer(&bs[0]))
+	return ptr, func() { runtime.KeepAlive(bs) }
+}
+
+// gostring reads a null-terminated C string from ptr.
+func gostring(ptr uintptr) string {
+	if ptr == 0 {
+		return ""
+	}
+	var buf []byte
+	for i := 0; ; i++ {
+		b := *(*byte)(unsafe.Pointer(ptr + uintptr(i)))
+		if b == 0 {
+			break
+		}
+		buf = append(buf, b)
+	}
+	return string(buf)
+}
+
+// ─────────────────────────────────────────────
+// Native function wrappers
+// ─────────────────────────────────────────────
+
+// callFunc1 calls a native function with 1 uintptr arg, returns uintptr.
+type fn1 func(a1 uintptr) uintptr
+type fn2 func(a1, a2 uintptr) uintptr
+type fn3 func(a1, a2, a3 uintptr) uintptr
+type fn4 func(a1, a2, a3, a4 uintptr) uintptr
+type fn0 func() uintptr
+type fn0v func()
+type fn1v func(a1 uintptr)
+type fn2v func(a1, a2 uintptr)
+type fn1i2 func(a1 uintptr, a2 int32) uintptr
+type fn1u64 func(a1 uintptr, a2 uint64) uintptr
+
+// ─────────────────────────────────────────────
+// Error helpers
+// ─────────────────────────────────────────────
+
+func lastError(lib libHandle) error {
+	sym, err := lib.sym("overdrive_last_error")
+	if err != nil {
+		return newError("unknown overdrive error (last_error symbol missing)")
+	}
+	ptr := callFn0(sym)
+	if ptr == 0 {
+		return newError("unknown overdrive error")
+	}
+	return newError(gostring(ptr))
+}
+
+func checkErrorStructured(lib libHandle) error {
+	sym, err := lib.sym("overdrive_get_error_details")
+	if err == nil {
+		ptr := callFn0(sym)
+		if ptr != 0 {
+			ds := gostring(ptr)
+			if ds != "" {
+				var data map[string]any
+				if jsonErr := json.Unmarshal([]byte(ds), &data); jsonErr == nil {
+					code, _ := data["code"].(string)
+					msg, _ := data["message"].(string)
+					ctx, _ := data["context"].(string)
+					docLink, _ := data["doc_link"].(string)
+					var suggestions []string
+					if rawSugg, ok := data["suggestions"].([]any); ok {
+						for _, s := range rawSugg {
+							if str, ok := s.(string); ok {
+								suggestions = append(suggestions, str)
+							}
 						}
 					}
-				}
-				if msg != "" || code != "" {
-					return newTypedError(msg, code, ctx, suggestions, docLink)
+					if msg != "" || code != "" {
+						return newTypedError(msg, code, ctx, suggestions, docLink)
+					}
 				}
 			}
 		}
 	}
-	return lastError()
+	return lastError(lib)
 }
 
-func readAndFree(ptr *C.char) string {
-	if ptr == nil {
+func readAndFree(lib libHandle, ptr uintptr) string {
+	if ptr == 0 {
 		return ""
 	}
-	s := C.GoString(ptr)
-	C.overdrive_free_string(ptr)
+	s := gostring(ptr)
+	if sym, err := lib.sym("overdrive_free_string"); err == nil {
+		callFn1v(sym, ptr)
+	}
 	return s
 }
 
-// ── Lifecycle ──────────────────────────────────
+// ─────────────────────────────────────────────
+// Open / Close
+// ─────────────────────────────────────────────
 
 // Version returns the SDK version string.
 func Version() string {
-	v := C.overdrive_version()
-	if v == nil {
+	lib, err := getLib()
+	if err != nil {
 		return "unknown"
 	}
-	return C.GoString(v)
+	sym, err := lib.sym("overdrive_version")
+	if err != nil {
+		return "unknown"
+	}
+	ptr := callFn0(sym)
+	return gostring(ptr)
 }
 
 // Open opens or creates a database with functional options (v1.4 API).
@@ -346,7 +516,6 @@ func Open(path string, opts ...OpenOption) (*DB, error) {
 			"", "", nil, "")
 	}
 
-	// Validate password
 	if options.Password != "" && len(options.Password) < 8 {
 		return nil, newTypedError(
 			"Password must be at least 8 characters long",
@@ -355,53 +524,87 @@ func Open(path string, opts ...OpenOption) (*DB, error) {
 			"https://overdrive-db.com/docs/errors/ODB-AUTH-002")
 	}
 
-	// If no special options, use simple open for backward compat
+	lib, err := getLib()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load native library: %w", err)
+	}
+
+	// Resolve to absolute path — avoids issues when CWD changes later
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+
+	var handle uintptr
+
+	// Simple open for default options
 	if options.Engine == "Disk" && options.Password == "" && options.AutoCreateTables {
-		cPath := C.CString(path)
-		defer C.free(unsafe.Pointer(cPath))
-		handle := C.overdrive_open(cPath)
-		if handle == nil {
-			return nil, fmt.Errorf("failed to open database: %w", checkErrorStructured())
+		sym, symErr := lib.sym("overdrive_open")
+		if symErr != nil {
+			return nil, fmt.Errorf("symbol overdrive_open not found: %w", symErr)
 		}
-		setSecurePermissions(path)
-		return &DB{handle: handle, path: path}, nil
+		cpath, keep := cstring(absPath)
+		handle = callFn1(sym, cpath)
+		keep()
+	} else {
+		sym, symErr := lib.sym("overdrive_open_with_engine")
+		if symErr != nil {
+			return nil, fmt.Errorf("symbol overdrive_open_with_engine not found: %w", symErr)
+		}
+		optMap := map[string]any{"auto_create_tables": options.AutoCreateTables}
+		if options.Password != "" {
+			optMap["password"] = options.Password
+		}
+		optJSON, _ := json.Marshal(optMap)
+
+		cpath, keepP := cstring(absPath)
+		cengine, keepE := cstring(options.Engine)
+		copts, keepO := cstring(string(optJSON))
+		handle = callFn3(sym, cpath, cengine, copts)
+		keepP()
+		keepE()
+		keepO()
 	}
 
-	// Build options JSON
-	optMap := map[string]any{"auto_create_tables": options.AutoCreateTables}
-	if options.Password != "" {
-		optMap["password"] = options.Password
+	if handle == 0 {
+		return nil, fmt.Errorf("failed to open database: %w", checkErrorStructured(lib))
 	}
-	optJSON, _ := json.Marshal(optMap)
 
-	cPath := C.CString(path)
-	defer C.free(unsafe.Pointer(cPath))
-	cEngine := C.CString(options.Engine)
-	defer C.free(unsafe.Pointer(cEngine))
-	cOpts := C.CString(string(optJSON))
-	defer C.free(unsafe.Pointer(cOpts))
-
-	handle := C.overdrive_open_with_engine(cPath, cEngine, cOpts)
-	if handle == nil {
-		return nil, fmt.Errorf("failed to open database: %w", checkErrorStructured())
-	}
-	setSecurePermissions(path)
-	return &DB{handle: handle, path: path}, nil
+	setSecurePermissions(absPath)
+	return &DB{handle: handle, path: absPath}, nil
 }
 
 // Close closes the database and releases resources.
 func (db *DB) Close() {
-	if db.handle != nil {
-		C.overdrive_close(db.handle)
-		db.handle = nil
+	if db.handle == 0 {
+		return
 	}
+	lib, err := getLib()
+	if err != nil {
+		return
+	}
+	sym, err := lib.sym("overdrive_close")
+	if err != nil {
+		return
+	}
+	callFn1v(sym, db.handle)
+	db.handle = 0
 }
 
 // Sync forces all data to be written to disk.
 func (db *DB) Sync() {
-	if db.handle != nil {
-		C.overdrive_sync(db.handle)
+	if db.handle == 0 {
+		return
 	}
+	lib, err := getLib()
+	if err != nil {
+		return
+	}
+	sym, err := lib.sym("overdrive_sync")
+	if err != nil {
+		return
+	}
+	callFn1v(sym, db.handle)
 }
 
 // Path returns the database file path.
@@ -409,7 +612,9 @@ func (db *DB) Path() string {
 	return db.path
 }
 
-// ── Tables ──────────────────────────────────────
+// ─────────────────────────────────────────────
+// Tables
+// ─────────────────────────────────────────────
 
 // CreateTable creates a new table with optional engine selection.
 //
@@ -420,19 +625,31 @@ func (db *DB) CreateTable(name string, opts ...TableOption) error {
 	for _, opt := range opts {
 		opt(to)
 	}
+	lib, err := getLib()
+	if err != nil {
+		return err
+	}
 
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
+	cname, keep := cstring(name)
+	defer keep()
 
 	if to.engine == "Disk" {
-		if C.overdrive_create_table(db.handle, cName) != 0 {
-			return checkErrorStructured()
+		sym, err := lib.sym("overdrive_create_table")
+		if err != nil {
+			return err
+		}
+		if callFn2(sym, db.handle, cname) != 0 {
+			return checkErrorStructured(lib)
 		}
 	} else {
-		cEngine := C.CString(to.engine)
-		defer C.free(unsafe.Pointer(cEngine))
-		if C.overdrive_create_table_with_engine(db.handle, cName, cEngine) != 0 {
-			return checkErrorStructured()
+		sym, err := lib.sym("overdrive_create_table_with_engine")
+		if err != nil {
+			return err
+		}
+		cengine, keepE := cstring(to.engine)
+		defer keepE()
+		if callFn3(sym, db.handle, cname, cengine) != 0 {
+			return checkErrorStructured(lib)
 		}
 	}
 	return nil
@@ -440,22 +657,37 @@ func (db *DB) CreateTable(name string, opts ...TableOption) error {
 
 // DropTable drops a table and all its data.
 func (db *DB) DropTable(name string) error {
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
-
-	if C.overdrive_drop_table(db.handle, cName) != 0 {
-		return checkErrorStructured()
+	lib, err := getLib()
+	if err != nil {
+		return err
+	}
+	sym, err := lib.sym("overdrive_drop_table")
+	if err != nil {
+		return err
+	}
+	cname, keep := cstring(name)
+	defer keep()
+	if callFn2(sym, db.handle, cname) != 0 {
+		return checkErrorStructured(lib)
 	}
 	return nil
 }
 
 // ListTables returns all table names.
 func (db *DB) ListTables() ([]string, error) {
-	ptr := C.overdrive_list_tables(db.handle)
-	if ptr == nil {
-		return nil, checkErrorStructured()
+	lib, err := getLib()
+	if err != nil {
+		return nil, err
 	}
-	s := readAndFree(ptr)
+	sym, err := lib.sym("overdrive_list_tables")
+	if err != nil {
+		return nil, err
+	}
+	ptr := callFn1(sym, db.handle)
+	if ptr == 0 {
+		return nil, checkErrorStructured(lib)
+	}
+	s := readAndFree(lib, ptr)
 	var tables []string
 	if err := json.Unmarshal([]byte(s), &tables); err != nil {
 		return nil, err
@@ -465,44 +697,67 @@ func (db *DB) ListTables() ([]string, error) {
 
 // TableExists checks if a table exists.
 func (db *DB) TableExists(name string) bool {
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
-	return C.overdrive_table_exists(db.handle, cName) == 1
+	lib, err := getLib()
+	if err != nil {
+		return false
+	}
+	sym, err := lib.sym("overdrive_table_exists")
+	if err != nil {
+		return false
+	}
+	cname, keep := cstring(name)
+	defer keep()
+	return callFn2(sym, db.handle, cname) == 1
 }
 
-// ── CRUD ────────────────────────────────────────
+// ─────────────────────────────────────────────
+// CRUD
+// ─────────────────────────────────────────────
 
 // Insert inserts a JSON document and returns the generated _id.
 func (db *DB) Insert(table string, doc map[string]any) (string, error) {
-	cTable := C.CString(table)
-	defer C.free(unsafe.Pointer(cTable))
-
+	lib, err := getLib()
+	if err != nil {
+		return "", err
+	}
+	sym, err := lib.sym("overdrive_insert")
+	if err != nil {
+		return "", err
+	}
 	jsonBytes, err := json.Marshal(doc)
 	if err != nil {
 		return "", err
 	}
-	cJSON := C.CString(string(jsonBytes))
-	defer C.free(unsafe.Pointer(cJSON))
-
-	ptr := C.overdrive_insert(db.handle, cTable, cJSON)
-	if ptr == nil {
-		return "", checkErrorStructured()
+	ctable, keepT := cstring(table)
+	cjson, keepJ := cstring(string(jsonBytes))
+	defer keepT()
+	defer keepJ()
+	ptr := callFn3(sym, db.handle, ctable, cjson)
+	if ptr == 0 {
+		return "", checkErrorStructured(lib)
 	}
-	return readAndFree(ptr), nil
+	return readAndFree(lib, ptr), nil
 }
 
 // Get retrieves a document by _id. Returns nil if not found.
 func (db *DB) Get(table, id string) (map[string]any, error) {
-	cTable := C.CString(table)
-	defer C.free(unsafe.Pointer(cTable))
-	cID := C.CString(id)
-	defer C.free(unsafe.Pointer(cID))
-
-	ptr := C.overdrive_get(db.handle, cTable, cID)
-	if ptr == nil {
+	lib, err := getLib()
+	if err != nil {
+		return nil, err
+	}
+	sym, err := lib.sym("overdrive_get")
+	if err != nil {
+		return nil, err
+	}
+	ctable, keepT := cstring(table)
+	cid, keepI := cstring(id)
+	defer keepT()
+	defer keepI()
+	ptr := callFn3(sym, db.handle, ctable, cid)
+	if ptr == 0 {
 		return nil, nil
 	}
-	s := readAndFree(ptr)
+	s := readAndFree(lib, ptr)
 	var doc map[string]any
 	if err := json.Unmarshal([]byte(s), &doc); err != nil {
 		return nil, err
@@ -512,63 +767,92 @@ func (db *DB) Get(table, id string) (map[string]any, error) {
 
 // Update updates fields of a document by _id. Returns true if updated.
 func (db *DB) Update(table, id string, updates map[string]any) (bool, error) {
-	cTable := C.CString(table)
-	defer C.free(unsafe.Pointer(cTable))
-	cID := C.CString(id)
-	defer C.free(unsafe.Pointer(cID))
-
+	lib, err := getLib()
+	if err != nil {
+		return false, err
+	}
+	sym, err := lib.sym("overdrive_update")
+	if err != nil {
+		return false, err
+	}
 	jsonBytes, err := json.Marshal(updates)
 	if err != nil {
 		return false, err
 	}
-	cJSON := C.CString(string(jsonBytes))
-	defer C.free(unsafe.Pointer(cJSON))
-
-	result := C.overdrive_update(db.handle, cTable, cID, cJSON)
+	ctable, keepT := cstring(table)
+	cid, keepI := cstring(id)
+	cjson, keepJ := cstring(string(jsonBytes))
+	defer keepT()
+	defer keepI()
+	defer keepJ()
+	result := int64(callFn4(sym, db.handle, ctable, cid, cjson))
 	if result == -1 {
-		return false, checkErrorStructured()
+		return false, checkErrorStructured(lib)
 	}
 	return result == 1, nil
 }
 
 // Delete removes a document by _id. Returns true if deleted.
 func (db *DB) Delete(table, id string) (bool, error) {
-	cTable := C.CString(table)
-	defer C.free(unsafe.Pointer(cTable))
-	cID := C.CString(id)
-	defer C.free(unsafe.Pointer(cID))
-
-	result := C.overdrive_delete(db.handle, cTable, cID)
+	lib, err := getLib()
+	if err != nil {
+		return false, err
+	}
+	sym, err := lib.sym("overdrive_delete")
+	if err != nil {
+		return false, err
+	}
+	ctable, keepT := cstring(table)
+	cid, keepI := cstring(id)
+	defer keepT()
+	defer keepI()
+	result := int64(callFn3(sym, db.handle, ctable, cid))
 	if result == -1 {
-		return false, checkErrorStructured()
+		return false, checkErrorStructured(lib)
 	}
 	return result == 1, nil
 }
 
 // Count returns the number of documents in a table.
 func (db *DB) Count(table string) (int, error) {
-	cTable := C.CString(table)
-	defer C.free(unsafe.Pointer(cTable))
-
-	result := C.overdrive_count(db.handle, cTable)
+	lib, err := getLib()
+	if err != nil {
+		return 0, err
+	}
+	sym, err := lib.sym("overdrive_count")
+	if err != nil {
+		return 0, err
+	}
+	ctable, keep := cstring(table)
+	defer keep()
+	result := int64(callFn2(sym, db.handle, ctable))
 	if result == -1 {
-		return 0, checkErrorStructured()
+		return 0, checkErrorStructured(lib)
 	}
 	return int(result), nil
 }
 
-// ── Query ───────────────────────────────────────
+// ─────────────────────────────────────────────
+// Query
+// ─────────────────────────────────────────────
 
 // Query executes an SQL query and returns result rows.
 func (db *DB) Query(sql string) (*QueryResult, error) {
-	cSQL := C.CString(sql)
-	defer C.free(unsafe.Pointer(cSQL))
-
-	ptr := C.overdrive_query(db.handle, cSQL)
-	if ptr == nil {
-		return nil, checkErrorStructured()
+	lib, err := getLib()
+	if err != nil {
+		return nil, err
 	}
-	s := readAndFree(ptr)
+	sym, err := lib.sym("overdrive_query")
+	if err != nil {
+		return nil, err
+	}
+	csql, keep := cstring(sql)
+	defer keep()
+	ptr := callFn2(sym, db.handle, csql)
+	if ptr == 0 {
+		return nil, checkErrorStructured(lib)
+	}
+	s := readAndFree(lib, ptr)
 	var qr QueryResult
 	if err := json.Unmarshal([]byte(s), &qr); err != nil {
 		return nil, err
@@ -578,16 +862,23 @@ func (db *DB) Query(sql string) (*QueryResult, error) {
 
 // Search performs full-text search across a table.
 func (db *DB) Search(table, text string) ([]map[string]any, error) {
-	cTable := C.CString(table)
-	defer C.free(unsafe.Pointer(cTable))
-	cText := C.CString(text)
-	defer C.free(unsafe.Pointer(cText))
-
-	ptr := C.overdrive_search(db.handle, cTable, cText)
-	if ptr == nil {
+	lib, err := getLib()
+	if err != nil {
+		return nil, err
+	}
+	sym, err := lib.sym("overdrive_search")
+	if err != nil {
+		return nil, err
+	}
+	ctable, keepT := cstring(table)
+	ctext, keepTx := cstring(text)
+	defer keepT()
+	defer keepTx()
+	ptr := callFn3(sym, db.handle, ctable, ctext)
+	if ptr == 0 {
 		return nil, nil
 	}
-	s := readAndFree(ptr)
+	s := readAndFree(lib, ptr)
 	var results []map[string]any
 	if err := json.Unmarshal([]byte(s), &results); err != nil {
 		return nil, err
@@ -634,37 +925,61 @@ func (db *DB) QuerySafe(sqlTemplate string, params ...string) (*QueryResult, err
 	return db.Query(sql)
 }
 
-// ── RAM Engine Methods (Task 26) ────────────────
+// ─────────────────────────────────────────────
+// RAM Engine Methods
+// ─────────────────────────────────────────────
 
 // Snapshot persists the current RAM database to a snapshot file.
 func (db *DB) Snapshot(path string) error {
-	cPath := C.CString(path)
-	defer C.free(unsafe.Pointer(cPath))
-
-	if C.overdrive_snapshot(db.handle, cPath) != 0 {
-		return checkErrorStructured()
+	lib, err := getLib()
+	if err != nil {
+		return err
+	}
+	sym, err := lib.sym("overdrive_snapshot")
+	if err != nil {
+		return err
+	}
+	cpath, keep := cstring(path)
+	defer keep()
+	if callFn2(sym, db.handle, cpath) != 0 {
+		return checkErrorStructured(lib)
 	}
 	return nil
 }
 
 // Restore loads a previously saved snapshot into the current database handle.
 func (db *DB) Restore(path string) error {
-	cPath := C.CString(path)
-	defer C.free(unsafe.Pointer(cPath))
-
-	if C.overdrive_restore(db.handle, cPath) != 0 {
-		return checkErrorStructured()
+	lib, err := getLib()
+	if err != nil {
+		return err
+	}
+	sym, err := lib.sym("overdrive_restore")
+	if err != nil {
+		return err
+	}
+	cpath, keep := cstring(path)
+	defer keep()
+	if callFn2(sym, db.handle, cpath) != 0 {
+		return checkErrorStructured(lib)
 	}
 	return nil
 }
 
 // MemoryUsageStats returns current RAM consumption statistics.
 func (db *DB) MemoryUsageStats() (*MemoryUsage, error) {
-	ptr := C.overdrive_memory_usage(db.handle)
-	if ptr == nil {
-		return nil, checkErrorStructured()
+	lib, err := getLib()
+	if err != nil {
+		return nil, err
 	}
-	s := readAndFree(ptr)
+	sym, err := lib.sym("overdrive_memory_usage")
+	if err != nil {
+		return nil, err
+	}
+	ptr := callFn1(sym, db.handle)
+	if ptr == 0 {
+		return nil, checkErrorStructured(lib)
+	}
+	s := readAndFree(lib, ptr)
 	var usage MemoryUsage
 	if err := json.Unmarshal([]byte(s), &usage); err != nil {
 		return nil, err
@@ -672,7 +987,9 @@ func (db *DB) MemoryUsageStats() (*MemoryUsage, error) {
 	return &usage, nil
 }
 
-// ── Watchdog (Task 27) ──────────────────────────
+// ─────────────────────────────────────────────
+// Watchdog
+// ─────────────────────────────────────────────
 
 // Watchdog inspects a .odb file for integrity, size, and modification status.
 // Static function — does not require an open database handle.
@@ -682,14 +999,21 @@ func (db *DB) MemoryUsageStats() (*MemoryUsage, error) {
 //	    log.Printf("Corrupted: %s", *report.CorruptionDetails)
 //	}
 func Watchdog(filePath string) (*WatchdogReport, error) {
-	cPath := C.CString(filePath)
-	defer C.free(unsafe.Pointer(cPath))
-
-	ptr := C.overdrive_watchdog(cPath)
-	if ptr == nil {
+	lib, err := getLib()
+	if err != nil {
+		return nil, err
+	}
+	sym, err := lib.sym("overdrive_watchdog")
+	if err != nil {
+		return nil, err
+	}
+	cpath, keep := cstring(filePath)
+	defer keep()
+	ptr := callFn1(sym, cpath)
+	if ptr == 0 {
 		return nil, fmt.Errorf("watchdog() returned NULL for path: %s", filePath)
 	}
-	s := readAndFree(ptr)
+	s := readAndFree(lib, ptr)
 	if s == "" {
 		return nil, fmt.Errorf("watchdog() returned empty response for path: %s", filePath)
 	}
@@ -703,13 +1027,23 @@ func Watchdog(filePath string) (*WatchdogReport, error) {
 	return &report, nil
 }
 
-// ── MVCC Transactions (Task 28) ────────────────
+// ─────────────────────────────────────────────
+// MVCC Transactions
+// ─────────────────────────────────────────────
 
 // BeginTransaction starts a new MVCC transaction.
 func (db *DB) BeginTransaction(isolation IsolationLevel) (*TransactionHandle, error) {
-	txnID := C.overdrive_begin_transaction(db.handle, C.int(isolation))
+	lib, err := getLib()
+	if err != nil {
+		return nil, err
+	}
+	sym, err := lib.sym("overdrive_begin_transaction")
+	if err != nil {
+		return nil, err
+	}
+	txnID := callFn1i2(sym, db.handle, int32(isolation))
 	if txnID == 0 {
-		return nil, checkErrorStructured()
+		return nil, checkErrorStructured(lib)
 	}
 	return &TransactionHandle{
 		TxnID:     uint64(txnID),
@@ -720,8 +1054,16 @@ func (db *DB) BeginTransaction(isolation IsolationLevel) (*TransactionHandle, er
 
 // CommitTransaction commits a transaction, making all changes permanent.
 func (db *DB) CommitTransaction(txn *TransactionHandle) error {
-	if C.overdrive_commit_transaction(db.handle, C.ulonglong(txn.TxnID)) != 0 {
-		return checkErrorStructured()
+	lib, err := getLib()
+	if err != nil {
+		return err
+	}
+	sym, err := lib.sym("overdrive_commit_transaction")
+	if err != nil {
+		return err
+	}
+	if callFn1u64(sym, db.handle, txn.TxnID) != 0 {
+		return checkErrorStructured(lib)
 	}
 	txn.Active = false
 	return nil
@@ -729,8 +1071,16 @@ func (db *DB) CommitTransaction(txn *TransactionHandle) error {
 
 // AbortTransaction aborts a transaction, discarding all changes.
 func (db *DB) AbortTransaction(txn *TransactionHandle) error {
-	if C.overdrive_abort_transaction(db.handle, C.ulonglong(txn.TxnID)) != 0 {
-		return checkErrorStructured()
+	lib, err := getLib()
+	if err != nil {
+		return err
+	}
+	sym, err := lib.sym("overdrive_abort_transaction")
+	if err != nil {
+		return err
+	}
+	if callFn1u64(sym, db.handle, txn.TxnID) != 0 {
+		return checkErrorStructured(lib)
 	}
 	txn.Active = false
 	return nil
@@ -740,7 +1090,6 @@ func (db *DB) AbortTransaction(txn *TransactionHandle) error {
 //
 //	err := db.Transaction(func(txn *overdrive.TransactionHandle) error {
 //	    db.Insert("users", map[string]any{"name": "Alice"})
-//	    db.Insert("logs", map[string]any{"event": "user_created"})
 //	    return nil
 //	}, overdrive.ReadCommitted)
 func (db *DB) Transaction(fn func(*TransactionHandle) error, isolation IsolationLevel) error {
@@ -776,7 +1125,9 @@ func (db *DB) TransactionWithRetry(fn func(*TransactionHandle) error, isolation 
 	return lastErr
 }
 
-// ── Helper Methods (Task 29) ────────────────────
+// ─────────────────────────────────────────────
+// Helper Methods
+// ─────────────────────────────────────────────
 
 // FindOne returns the first document matching where, or nil if no match.
 func (db *DB) FindOne(table, where string) (map[string]any, error) {
@@ -798,81 +1149,50 @@ func (db *DB) FindOne(table, where string) (map[string]any, error) {
 
 // FindAll returns all documents matching where.
 func (db *DB) FindAll(table, where, orderBy string, limit int) ([]map[string]any, error) {
-	sql := "SELECT * FROM " + table
+	var parts []string
+	parts = append(parts, "SELECT * FROM "+table)
 	if where != "" {
-		sql += " WHERE " + where
+		parts = append(parts, "WHERE "+where)
 	}
 	if orderBy != "" {
-		sql += " ORDER BY " + orderBy
+		parts = append(parts, "ORDER BY "+orderBy)
 	}
 	if limit > 0 {
-		sql += fmt.Sprintf(" LIMIT %d", limit)
+		parts = append(parts, fmt.Sprintf("LIMIT %d", limit))
 	}
-	qr, err := db.Query(sql)
+	qr, err := db.Query(strings.Join(parts, " "))
 	if err != nil {
 		return nil, err
 	}
 	return qr.Rows, nil
 }
 
-// UpdateMany updates all documents matching where. Returns count of updated documents.
-func (db *DB) UpdateMany(table, where string, updates map[string]any) (int, error) {
-	setClauses := []string{}
-	for k, v := range updates {
-		valJSON, _ := json.Marshal(v)
-		setClauses = append(setClauses, fmt.Sprintf("%s = %s", k, string(valJSON)))
-	}
-	sql := "UPDATE " + table + " SET " + strings.Join(setClauses, ", ") + " WHERE " + where
-	qr, err := db.Query(sql)
-	if err != nil {
-		return 0, err
-	}
-	return qr.RowsAffected, nil
-}
-
-// DeleteMany deletes all documents matching where. Returns count of deleted documents.
-func (db *DB) DeleteMany(table, where string) (int, error) {
-	sql := "DELETE FROM " + table + " WHERE " + where
-	qr, err := db.Query(sql)
-	if err != nil {
-		return 0, err
-	}
-	return qr.RowsAffected, nil
-}
-
-// CountWhere counts documents matching where.
+// CountWhere counts documents matching a WHERE clause.
 func (db *DB) CountWhere(table, where string) (int, error) {
 	var sql string
 	if where != "" {
-		sql = "SELECT COUNT(*) FROM " + table + " WHERE " + where
+		sql = fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s", table, where)
 	} else {
-		sql = "SELECT COUNT(*) FROM " + table
+		sql = fmt.Sprintf("SELECT COUNT(*) FROM %s", table)
 	}
 	qr, err := db.Query(sql)
 	if err != nil {
 		return 0, err
 	}
-	if len(qr.Rows) == 0 {
-		return 0, nil
-	}
-	row := qr.Rows[0]
-	for _, key := range []string{"COUNT(*)", "count(*)", "count", "COUNT"} {
-		if val, ok := row[key]; ok {
-			if n, ok := val.(float64); ok {
+	if len(qr.Rows) > 0 {
+		for _, v := range qr.Rows[0] {
+			switch n := v.(type) {
+			case float64:
 				return int(n), nil
+			case int:
+				return n, nil
 			}
-		}
-	}
-	// Fallback: first numeric value
-	for _, val := range row {
-		if n, ok := val.(float64); ok {
-			return int(n), nil
 		}
 	}
 	return 0, nil
 }
 
-// Exists checks whether a document with the given id exists.
+// Exists returns true if the document with the given _id exists.
 func (db *DB) Exists(table, id string) (bool, error) {
 	doc, err := db.Get(table, id)
 	if err != nil {
@@ -881,203 +1201,91 @@ func (db *DB) Exists(table, id string) (bool, error) {
 	return doc != nil, nil
 }
 
-// ── Integrity Verification ─────────────────────
-
-// IntegrityReport holds the result of an integrity check.
-type IntegrityReport struct {
-	IsValid        bool     `json:"valid"`
-	PagesChecked   int      `json:"pages_checked"`
-	TablesVerified int      `json:"tables_verified"`
-	Issues         []string `json:"issues"`
+// UpdateMany updates all documents matching a WHERE clause with the given updates.
+// Returns the count of updated documents.
+func (db *DB) UpdateMany(table, where string, updates map[string]any) (int, error) {
+	jsonBytes, err := json.Marshal(updates)
+	if err != nil {
+		return 0, err
+	}
+	sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s", table, string(jsonBytes), where)
+	qr, err := db.Query(sql)
+	if err != nil {
+		return 0, err
+	}
+	return qr.RowsAffected, nil
 }
 
-// VerifyIntegrity checks the database for corruption or inconsistencies.
-func (db *DB) VerifyIntegrity() (*IntegrityReport, error) {
-	ptr := C.overdrive_verify_integrity(db.handle)
-	if ptr == nil {
-		return nil, checkErrorStructured()
+// DeleteMany deletes all documents matching a WHERE clause.
+// Returns the count of deleted documents.
+func (db *DB) DeleteMany(table, where string) (int, error) {
+	sql := fmt.Sprintf("DELETE FROM %s WHERE %s", table, where)
+	qr, err := db.Query(sql)
+	if err != nil {
+		return 0, err
 	}
-	s := readAndFree(ptr)
-	var report IntegrityReport
-	if err := json.Unmarshal([]byte(s), &report); err != nil {
+	return qr.RowsAffected, nil
+}
+
+// VerifyIntegrity verifies database integrity (B-Tree, page checksums, MVCC chains).
+func (db *DB) VerifyIntegrity() (map[string]any, error) {
+	lib, err := getLib()
+	if err != nil {
 		return nil, err
 	}
-	return &report, nil
-}
-
-// ── Extended Stats ─────────────────────────────
-
-// StatsResult holds detailed database statistics.
-type StatsResult struct {
-	Tables             int    `json:"tables"`
-	TotalRecords       int    `json:"total_records"`
-	FileSizeBytes      uint64 `json:"file_size_bytes"`
-	Path               string `json:"path"`
-	MvccActiveVersions int    `json:"mvcc_active_versions"`
-	PageSize           int    `json:"page_size"`
-	SdkVersion         string `json:"sdk_version"`
-}
-
-// Stats returns detailed database statistics including MVCC info.
-func (db *DB) Stats() (*StatsResult, error) {
-	ptr := C.overdrive_stats(db.handle)
-	if ptr == nil {
-		return nil, checkErrorStructured()
-	}
-	s := readAndFree(ptr)
-	var stats StatsResult
-	if err := json.Unmarshal([]byte(s), &stats); err != nil {
+	sym, err := lib.sym("overdrive_verify_integrity")
+	if err != nil {
 		return nil, err
 	}
-	return &stats, nil
+	ptr := callFn1(sym, db.handle)
+	if ptr == 0 {
+		return nil, checkErrorStructured(lib)
+	}
+	s := readAndFree(lib, ptr)
+	var result map[string]any
+	if err := json.Unmarshal([]byte(s), &result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
-// ── Security ───────────────────────────────────
+// Stats returns extended database statistics.
+func (db *DB) Stats() (map[string]any, error) {
+	lib, err := getLib()
+	if err != nil {
+		return nil, err
+	}
+	sym, err := lib.sym("overdrive_stats")
+	if err != nil {
+		return nil, err
+	}
+	ptr := callFn1(sym, db.handle)
+	if ptr == 0 {
+		return nil, checkErrorStructured(lib)
+	}
+	s := readAndFree(lib, ptr)
+	var result map[string]any
+	if err := json.Unmarshal([]byte(s), &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
 
+// ─────────────────────────────────────────────
+// Security
+// ─────────────────────────────────────────────
+
+// setSecurePermissions sets restrictive permissions on the database file.
 func setSecurePermissions(path string) {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return
+	if runtime.GOOS != "windows" {
+		_ = os.Chmod(path, 0600)
 	}
-	if runtime.GOOS == "windows" {
-		cmd := exec.Command("icacls", path, "/inheritance:r", "/grant:r",
-			fmt.Sprintf("%s:F", os.Getenv("USERNAME")))
-		if err := cmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "[overdrive] WARNING: Could not harden permissions on '%s': %v\n", path, err)
-		}
-	} else {
-		if err := os.Chmod(path, 0600); err != nil {
-			fmt.Fprintf(os.Stderr, "[overdrive] WARNING: Could not chmod 600 '%s': %v\n", path, err)
-		}
-	}
+	// Windows: file is opened with exclusive access by default
 }
 
-// OpenEncrypted opens a database with an AES encryption key loaded from
-// the specified environment variable.
-func OpenEncrypted(path, keyEnvVar string) (*DB, error) {
-	key := os.Getenv(keyEnvVar)
-	if key == "" {
-		return nil, fmt.Errorf(
-			"[overdrive] encryption key env var '%s' is not set or empty — "+
-				"set it with: export %s=\"your-key\" (bash) or "+
-				"$env:%s=\"your-key\" (PowerShell)", keyEnvVar, keyEnvVar, keyEnvVar)
-	}
-	os.Setenv("__OVERDRIVE_KEY", key)
-	defer func() {
-		os.Unsetenv("__OVERDRIVE_KEY")
-		keyBytes := []byte(key)
-		for i := range keyBytes {
-			keyBytes[i] = 0
-		}
-	}()
-	return Open(path)
-}
+// ─────────────────────────────────────────────
+// Platform call stubs — implemented in platform files
+// ─────────────────────────────────────────────
 
-// Backup creates an encrypted backup of the database.
-func (db *DB) Backup(destPath string) error {
-	db.Sync()
-	if err := copyFile(db.path, destPath); err != nil {
-		return fmt.Errorf("overdrive backup: %w", err)
-	}
-	walSrc := db.path + ".wal"
-	walDst := destPath + ".wal"
-	if _, err := os.Stat(walSrc); err == nil {
-		if err := copyFile(walSrc, walDst); err != nil {
-			return fmt.Errorf("overdrive backup (wal): %w", err)
-		}
-	}
-	setSecurePermissions(destPath)
-	return nil
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	if _, err = io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Sync()
-}
-
-// CleanupWAL deletes the WAL file after a confirmed commit.
-func (db *DB) CleanupWAL() error {
-	walPath := db.path + ".wal"
-	if _, err := os.Stat(walPath); err == nil {
-		return os.Remove(walPath)
-	}
-	return nil
-}
-
-// ── SafeDB — Concurrent-safe wrapper ───────────
-
-// SafeDB wraps DB with a sync.RWMutex for safe concurrent access.
-type SafeDB struct {
-	mu sync.RWMutex
-	db *DB
-}
-
-// NewSafeDB wraps an existing DB in a thread-safe wrapper.
-func NewSafeDB(db *DB) *SafeDB {
-	return &SafeDB{db: db}
-}
-
-// OpenSafe opens (or creates) a database wrapped in SafeDB.
-func OpenSafe(path string, opts ...OpenOption) (*SafeDB, error) {
-	db, err := Open(path, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return NewSafeDB(db), nil
-}
-
-// OpenSafeEncrypted opens an encrypted database wrapped in SafeDB.
-func OpenSafeEncrypted(path, keyEnvVar string) (*SafeDB, error) {
-	db, err := OpenEncrypted(path, keyEnvVar)
-	if err != nil {
-		return nil, err
-	}
-	return NewSafeDB(db), nil
-}
-
-func (s *SafeDB) Query(sql string) (*QueryResult, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.db.Query(sql)
-}
-func (s *SafeDB) QuerySafe(tmpl string, params ...string) (*QueryResult, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.db.QuerySafe(tmpl, params...)
-}
-func (s *SafeDB) Insert(table string, doc map[string]any) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.db.Insert(table, doc)
-}
-func (s *SafeDB) Get(table, id string) (map[string]any, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.db.Get(table, id)
-}
-func (s *SafeDB) Backup(dest string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.db.Backup(dest)
-}
-func (s *SafeDB) CleanupWAL() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.db.CleanupWAL()
-}
-func (s *SafeDB) Close() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.db.Close()
-}
+// These wrapper functions call native symbols via platform-specific mechanism.
+// Implementations are in overdrive_windows.go and overdrive_unix.go.

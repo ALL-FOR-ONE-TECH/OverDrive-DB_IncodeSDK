@@ -17,12 +17,18 @@ exclude = [
     "go/",
     "c/",
     "docs/",
+    "docs-site/",
     "examples/",
     "logo/",
     "target/",
     "*.odb",
     "publish-all.ps1",
+    "RELEASE_*.md",
+    "scripts/",
+    "tests/",
 ]
+# ⚠  lib/ is intentionally NOT excluded — it contains the prebuilt native libraries
+# that are bundled with the Rust crate for automatic runtime loading.
 
 [lib]
 name = "overdrive"
