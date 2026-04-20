@@ -1,4 +1,4 @@
-name: SDK CI — Test, Build & Publish (v1.4.3)
+name: SDK CI — Test, Build & Publish (v1.4.4)
 
 # ─────────────────────────────────────────────────────────────
 # Pipeline:
@@ -20,9 +20,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. v1.4.3)'
+        description: 'Release version (e.g. v1.4.4)'
         required: false
-        default: 'v1.4.3'
+        default: 'v1.4.4'
       publish:
         description: 'Publish packages after successful build?'
         required: false
@@ -145,15 +145,15 @@ jobs:
           for f in pathlib.Path('overdrive').glob('*.py'):
               try:
                   ast.parse(f.read_text(encoding='utf-8'))
-                  print(f'✓ {f}')
+                  print('OK: ' + str(f))
               except SyntaxError as e:
-                  print(f'✗ Syntax error in {f}: {e}')
+                  print('FAIL: Syntax error in ' + str(f) + ': ' + str(e))
                   sys.exit(1)
           "
           # Build the wheel (does not require native lib)
           python -m build
           echo "✅ Python wheel built successfully"
-          ls -lah dist/
+          Get-ChildItem dist/
 
       # ── Go ────────────────────────────────────────────────
       - name: Setup Go ${{ matrix.go }}

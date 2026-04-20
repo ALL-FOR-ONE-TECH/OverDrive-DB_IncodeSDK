@@ -81,15 +81,8 @@ fn main() {
         );
     }
 
-    // cbindgen — generate C header from Rust FFI (optional, only if cbindgen is available)
-    #[cfg(feature = "generate-header")]
-    {
-        let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-        cbindgen::Builder::new()
-            .with_crate(crate_dir)
-            .with_config(cbindgen::Config::from_file("cbindgen.toml").unwrap_or_default())
-            .generate()
-            .expect("Unable to generate C bindings")
-            .write_to_file("c/include/overdrive.h");
-    }
+    // cbindgen header generation is handled separately via:
+    //   cargo build --features generate-header
+    // Requires adding cbindgen to [build-dependencies] in Cargo.toml first.
+    // Not run in CI — skipped here intentionally.
 }

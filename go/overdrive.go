@@ -239,7 +239,7 @@ func WithTableEngine(engine string) TableOption {
 // ─────────────────────────────────────────────
 
 const (
-	releaseVersion = "v1.4.3"
+	releaseVersion = "v1.4.4"
 	releaseRepo    = "ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
 )
 
@@ -376,21 +376,31 @@ func getLib() (libHandle, error) {
 // ─────────────────────────────────────────────
 
 // cstring allocates a null-terminated C string in Go-managed memory.
-// Returns a pointer and a cleanup func (call deferred).
-func cstring(s string) (uintptr, func()) {
+// Returns the raw bytes (kept alive by the caller via runtime.KeepAlive)
+// and a cleanup func. The caller must convert to uintptr at the call site
+// using uintptr(unsafe.Pointer(&bs[0])) in the same expression as the call
+// to satisfy go vet's unsafe.Pointer rules (rule 4).
+func cstring(s string) ([]byte, func()) {
 	bs := append([]byte(s), 0)
-	ptr := uintptr(unsafe.Pointer(&bs[0]))
-	return ptr, func() { runtime.KeepAlive(bs) }
+	return bs, func() { runtime.KeepAlive(bs) }
 }
 
-// gostring reads a null-terminated C string from ptr.
+// cptr returns the uintptr of the first byte of a cstring slice.
+// Must be called in the same expression as the native function call.
+func cptr(bs []byte) uintptr {
+	return uintptr(unsafe.Pointer(&bs[0]))
+}
+
+// gostring reads a null-terminated C string from a uintptr.
+// The ptr value must originate from a native library return value (not a Go pointer).
 func gostring(ptr uintptr) string {
 	if ptr == 0 {
 		return ""
 	}
+	p := unsafe.Pointer(ptr) //nolint:unsafeptr // ptr is a C string from native lib
 	var buf []byte
-	for i := 0; ; i++ {
-		b := *(*byte)(unsafe.Pointer(ptr + uintptr(i)))
+	for i := uintptr(0); ; i++ {
+		b := *(*byte)(unsafe.Add(p, i))
 		if b == 0 {
 			break
 		}
@@ -544,7 +554,7 @@ func Open(path string, opts ...OpenOption) (*DB, error) {
 			return nil, fmt.Errorf("symbol overdrive_open not found: %w", symErr)
 		}
 		cpath, keep := cstring(absPath)
-		handle = callFn1(sym, cpath)
+		handle = callFn1(sym, cptr(cpath))
 		keep()
 	} else {
 		sym, symErr := lib.sym("overdrive_open_with_engine")
@@ -560,7 +570,7 @@ func Open(path string, opts ...OpenOption) (*DB, error) {
 		cpath, keepP := cstring(absPath)
 		cengine, keepE := cstring(options.Engine)
 		copts, keepO := cstring(string(optJSON))
-		handle = callFn3(sym, cpath, cengine, copts)
+		handle = callFn3(sym, cptr(cpath), cptr(cengine), cptr(copts))
 		keepP()
 		keepE()
 		keepO()
@@ -638,7 +648,7 @@ func (db *DB) CreateTable(name string, opts ...TableOption) error {
 		if err != nil {
 			return err
 		}
-		if callFn2(sym, db.handle, cname) != 0 {
+		if callFn2(sym, db.handle, cptr(cname)) != 0 {
 			return checkErrorStructured(lib)
 		}
 	} else {
@@ -648,7 +658,7 @@ func (db *DB) CreateTable(name string, opts ...TableOption) error {
 		}
 		cengine, keepE := cstring(to.engine)
 		defer keepE()
-		if callFn3(sym, db.handle, cname, cengine) != 0 {
+		if callFn3(sym, db.handle, cptr(cname), cptr(cengine)) != 0 {
 			return checkErrorStructured(lib)
 		}
 	}
@@ -667,7 +677,7 @@ func (db *DB) DropTable(name string) error {
 	}
 	cname, keep := cstring(name)
 	defer keep()
-	if callFn2(sym, db.handle, cname) != 0 {
+	if callFn2(sym, db.handle, cptr(cname)) != 0 {
 		return checkErrorStructured(lib)
 	}
 	return nil
@@ -707,7 +717,7 @@ func (db *DB) TableExists(name string) bool {
 	}
 	cname, keep := cstring(name)
 	defer keep()
-	return callFn2(sym, db.handle, cname) == 1
+	return callFn2(sym, db.handle, cptr(cname)) == 1
 }
 
 // ─────────────────────────────────────────────
@@ -732,7 +742,7 @@ func (db *DB) Insert(table string, doc map[string]any) (string, error) {
 	cjson, keepJ := cstring(string(jsonBytes))
 	defer keepT()
 	defer keepJ()
-	ptr := callFn3(sym, db.handle, ctable, cjson)
+	ptr := callFn3(sym, db.handle, cptr(ctable), cptr(cjson))
 	if ptr == 0 {
 		return "", checkErrorStructured(lib)
 	}
@@ -753,7 +763,7 @@ func (db *DB) Get(table, id string) (map[string]any, error) {
 	cid, keepI := cstring(id)
 	defer keepT()
 	defer keepI()
-	ptr := callFn3(sym, db.handle, ctable, cid)
+	ptr := callFn3(sym, db.handle, cptr(ctable), cptr(cid))
 	if ptr == 0 {
 		return nil, nil
 	}
@@ -785,7 +795,7 @@ func (db *DB) Update(table, id string, updates map[string]any) (bool, error) {
 	defer keepT()
 	defer keepI()
 	defer keepJ()
-	result := int64(callFn4(sym, db.handle, ctable, cid, cjson))
+	result := int64(callFn4(sym, db.handle, cptr(ctable), cptr(cid), cptr(cjson)))
 	if result == -1 {
 		return false, checkErrorStructured(lib)
 	}
@@ -806,7 +816,7 @@ func (db *DB) Delete(table, id string) (bool, error) {
 	cid, keepI := cstring(id)
 	defer keepT()
 	defer keepI()
-	result := int64(callFn3(sym, db.handle, ctable, cid))
+	result := int64(callFn3(sym, db.handle, cptr(ctable), cptr(cid)))
 	if result == -1 {
 		return false, checkErrorStructured(lib)
 	}
@@ -825,7 +835,7 @@ func (db *DB) Count(table string) (int, error) {
 	}
 	ctable, keep := cstring(table)
 	defer keep()
-	result := int64(callFn2(sym, db.handle, ctable))
+	result := int64(callFn2(sym, db.handle, cptr(ctable)))
 	if result == -1 {
 		return 0, checkErrorStructured(lib)
 	}
@@ -848,7 +858,7 @@ func (db *DB) Query(sql string) (*QueryResult, error) {
 	}
 	csql, keep := cstring(sql)
 	defer keep()
-	ptr := callFn2(sym, db.handle, csql)
+	ptr := callFn2(sym, db.handle, cptr(csql))
 	if ptr == 0 {
 		return nil, checkErrorStructured(lib)
 	}
@@ -874,7 +884,7 @@ func (db *DB) Search(table, text string) ([]map[string]any, error) {
 	ctext, keepTx := cstring(text)
 	defer keepT()
 	defer keepTx()
-	ptr := callFn3(sym, db.handle, ctable, ctext)
+	ptr := callFn3(sym, db.handle, cptr(ctable), cptr(ctext))
 	if ptr == 0 {
 		return nil, nil
 	}
@@ -941,7 +951,7 @@ func (db *DB) Snapshot(path string) error {
 	}
 	cpath, keep := cstring(path)
 	defer keep()
-	if callFn2(sym, db.handle, cpath) != 0 {
+	if callFn2(sym, db.handle, cptr(cpath)) != 0 {
 		return checkErrorStructured(lib)
 	}
 	return nil
@@ -959,7 +969,7 @@ func (db *DB) Restore(path string) error {
 	}
 	cpath, keep := cstring(path)
 	defer keep()
-	if callFn2(sym, db.handle, cpath) != 0 {
+	if callFn2(sym, db.handle, cptr(cpath)) != 0 {
 		return checkErrorStructured(lib)
 	}
 	return nil
@@ -1009,7 +1019,7 @@ func Watchdog(filePath string) (*WatchdogReport, error) {
 	}
 	cpath, keep := cstring(filePath)
 	defer keep()
-	ptr := callFn1(sym, cpath)
+	ptr := callFn1(sym, cptr(cpath))
 	if ptr == 0 {
 		return nil, fmt.Errorf("watchdog() returned NULL for path: %s", filePath)
 	}
