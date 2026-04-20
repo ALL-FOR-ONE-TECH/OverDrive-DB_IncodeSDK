@@ -239,7 +239,7 @@ func WithTableEngine(engine string) TableOption {
 // ─────────────────────────────────────────────
 
 const (
-	releaseVersion = "v1.4.4"
+	releaseVersion = "v1.4.5"
 	releaseRepo    = "ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
 )
 

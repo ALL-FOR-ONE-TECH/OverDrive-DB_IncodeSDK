@@ -1,4 +1,4 @@
-name: SDK CI — Test, Build & Publish (v1.4.4)
+name: SDK CI — Test, Build & Publish (v1.4.5)
 
 # ─────────────────────────────────────────────────────────────
 # Pipeline:
@@ -20,9 +20,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. v1.4.4)'
+        description: 'Release version (e.g. v1.4.5)'
         required: false
-        default: 'v1.4.4'
+        default: 'v1.4.5'
       publish:
         description: 'Publish packages after successful build?'
         required: false
@@ -230,38 +230,42 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            built_name: overdrive.dll
+            built_name: overdrive_db.dll
             asset_name: overdrive-windows-x64.dll
             rustflags: "-C target-feature=+crt-static"
 
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            built_name: liboverdrive.so
+            built_name: liboverdrive_db.so
             asset_name: liboverdrive-linux-x64.so
             rustflags: ""
 
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            built_name: liboverdrive.so
+            built_name: liboverdrive_db.so
             asset_name: liboverdrive-linux-arm64.so
             rustflags: ""
 
           - os: macos-latest
             target: aarch64-apple-darwin
-            built_name: liboverdrive.dylib
+            built_name: liboverdrive_db.dylib
             asset_name: liboverdrive-macos-arm64.dylib
             rustflags: ""
 
           - os: macos-latest
             target: x86_64-apple-darwin
-            built_name: liboverdrive.dylib
+            built_name: liboverdrive_db.dylib
             asset_name: liboverdrive-macos-x64.dylib
             rustflags: ""
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout main OverDrive-DB repo (contains FFI source)
+        uses: actions/checkout@v4
+        with:
+          repository: karthikeyanV2K/OverDrive-DB
+          ref: main
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

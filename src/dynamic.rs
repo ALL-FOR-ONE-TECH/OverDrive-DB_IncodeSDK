@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 
 static LIB: OnceLock<Library> = OnceLock::new();
 
-const RELEASE_VERSION: &str = "v1.4.4";
+const RELEASE_VERSION: &str = "v1.4.5";
 const RELEASE_REPO: &str = "ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK";
 
 fn lib_name() -> &'static str {
