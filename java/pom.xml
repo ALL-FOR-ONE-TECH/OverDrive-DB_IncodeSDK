@@ -6,7 +6,7 @@
 
     <groupId>com.afot</groupId>
     <artifactId>overdrive-db</artifactId>
-    <version>1.4.3</version>
+    <version>1.4.4</version>
     <packaging>jar</packaging>
 
     <name>OverDrive-DB Java SDK</name>
@@ -91,6 +91,14 @@
 
     <build>
         <resources>
+            <!-- Include standard resources -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>**/*</include>
+                </includes>
+            </resource>
+            <!-- Legacy lib directory for backward compatibility -->
             <resource>
                 <directory>lib</directory>
                 <includes>
@@ -107,8 +115,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.12.1</version>
                 <configuration>
-                    <source>11</source>
-                    <target>11</target>
+                    <release>11</release>
                 </configuration>
             </plugin>
 

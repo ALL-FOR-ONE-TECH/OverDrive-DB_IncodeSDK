@@ -499,7 +499,7 @@ pub unsafe extern "C" fn overdrive_free_string(ptr: *mut c_char) {
 #[no_mangle]
 pub extern "C" fn overdrive_version() -> *const c_char {
     // SAFETY: static null-terminated byte string
-    c"1.4.2".as_ptr()
+    c"1.4.4".as_ptr()
 }
 
 // ─────────────────────────────────────────────────────────────

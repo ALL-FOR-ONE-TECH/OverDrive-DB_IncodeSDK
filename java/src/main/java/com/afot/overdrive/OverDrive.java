@@ -78,8 +78,8 @@ public class OverDrive implements AutoCloseable {
         static {
             LibOverDrive lib;
             try {
-                lib = Native.load("overdrive", LibOverDrive.class);
-            } catch (UnsatisfiedLinkError e) {
+                lib = NativeLibraryLoader.loadNativeLibrary();
+            } catch (Exception e) {
                 lib = null;
             }
             INSTANCE = lib;
@@ -89,14 +89,19 @@ public class OverDrive implements AutoCloseable {
     private static LibOverDrive lib() {
         LibOverDrive l = NativeHolder.INSTANCE;
         if (l == null) {
+            String platform = NativeLibraryLoader.getPlatform();
+            String libraryName = NativeLibraryLoader.getLibraryName();
+            
             throw new OverDriveException(
-                "Could not load native library 'overdrive'. " +
-                "Ensure the native library is on the library path.",
-                "ODB-FFI-001", "",
+                "Could not load native library for platform: " + platform + 
+                (libraryName != null ? " (expected: " + libraryName + ")" : " (unsupported platform)"),
+                "ODB-FFI-001", 
+                "Platform: " + platform + ", Supported: " + NativeLibraryLoader.getSupportedPlatforms(),
                 Arrays.asList(
-                    "Reinstall the package",
-                    "Verify your platform is supported (Windows x64, Linux x64/ARM64, macOS x64/ARM64)",
-                    "Check that the package installation completed successfully"
+                    "Reinstall the package to ensure native libraries are properly bundled",
+                    "Verify your platform is supported: " + NativeLibraryLoader.getSupportedPlatforms(),
+                    "Check that the package installation completed successfully",
+                    "Ensure the native library is available in your system PATH"
                 ),
                 "https://overdrive-db.com/docs/errors/ODB-FFI-001"
             );
@@ -821,14 +826,14 @@ public class OverDrive implements AutoCloseable {
      * @return First matching document or null
      */
     public Map<String, Object> findOne(String table, String where) {
-        String sql;
-        if (where != null && !where.isEmpty()) {
-            sql = "SELECT * FROM " + table + " WHERE " + where + " LIMIT 1";
-        } else {
-            sql = "SELECT * FROM " + table + " LIMIT 1";
+        // Scan via CRUD instead of query() which returns Shell table output
+        List<Map<String, Object>> all = scanAll(table);
+        for (Map<String, Object> row : all) {
+            if (where == null || where.isEmpty() || matchesWhere(row, where)) {
+                return row;
+            }
         }
-        List<Map<String, Object>> rows = query(sql);
-        return rows.isEmpty() ? null : rows.get(0);
+        return null;
     }
 
     /** Return the first document in the table, or null. */
@@ -838,19 +843,42 @@ public class OverDrive implements AutoCloseable {
 
     /**
      * Return all documents matching where.
-     *
-     * @param table   Table name
-     * @param where   Optional SQL WHERE clause
-     * @param orderBy Optional ORDER BY expression
-     * @param limit   Max rows (0 = no limit)
-     * @return List of matching documents
      */
     public List<Map<String, Object>> findAll(String table, String where, String orderBy, int limit) {
-        StringBuilder sql = new StringBuilder("SELECT * FROM ").append(table);
-        if (where != null && !where.isEmpty()) sql.append(" WHERE ").append(where);
-        if (orderBy != null && !orderBy.isEmpty()) sql.append(" ORDER BY ").append(orderBy);
-        if (limit > 0) sql.append(" LIMIT ").append(limit);
-        return query(sql.toString());
+        List<Map<String, Object>> all = scanAll(table);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> row : all) {
+            if (where == null || where.isEmpty() || matchesWhere(row, where)) {
+                result.add(row);
+            }
+        }
+        // Sort if orderBy specified
+        if (orderBy != null && !orderBy.isEmpty()) {
+            String col = orderBy.trim();
+            boolean desc = false;
+            if (col.toUpperCase().endsWith(" DESC")) {
+                desc = true;
+                col = col.substring(0, col.length() - 5).trim();
+            } else if (col.toUpperCase().endsWith(" ASC")) {
+                col = col.substring(0, col.length() - 4).trim();
+            }
+            final String sortCol = col;
+            final boolean sortDesc = desc;
+            result.sort((a, b) -> {
+                Object va = a.get(sortCol);
+                Object vb = b.get(sortCol);
+                if (va == null && vb == null) return 0;
+                if (va == null) return sortDesc ? 1 : -1;
+                if (vb == null) return sortDesc ? -1 : 1;
+                @SuppressWarnings("unchecked")
+                int cmp = ((Comparable<Object>) va).compareTo(vb);
+                return sortDesc ? -cmp : cmp;
+            });
+        }
+        if (limit > 0 && result.size() > limit) {
+            result = result.subList(0, limit);
+        }
+        return result;
     }
 
     /** Return all documents in the table. */
@@ -860,70 +888,123 @@ public class OverDrive implements AutoCloseable {
 
     /**
      * Update all documents matching where.
-     *
-     * @param table   Table name
-     * @param where   SQL WHERE clause (required)
-     * @param updates Field → new value pairs
-     * @return Number of documents updated
      */
     public int updateMany(String table, String where, Map<String, Object> updates) {
-        StringBuilder setClauses = new StringBuilder();
-        boolean first = true;
-        for (Map.Entry<String, Object> entry : updates.entrySet()) {
-            if (!first) setClauses.append(", ");
-            setClauses.append(entry.getKey()).append(" = ").append(GSON.toJson(entry.getValue()));
-            first = false;
+        List<Map<String, Object>> matches = findAll(table, where, null, 0);
+        int updated = 0;
+        for (Map<String, Object> row : matches) {
+            String id = (String) row.get("_id");
+            if (id != null && update(table, id, updates)) {
+                updated++;
+            }
         }
-        String sql = "UPDATE " + table + " SET " + setClauses + " WHERE " + where;
-        Map<String, Object> result = queryFull(sql);
-        Object affected = result.get("rows_affected");
-        return affected != null ? ((Number) affected).intValue() : 0;
+        return updated;
     }
 
     /**
      * Delete all documents matching where.
-     *
-     * @param table Table name
-     * @param where SQL WHERE clause (required)
-     * @return Number of documents deleted
      */
     public int deleteMany(String table, String where) {
-        String sql = "DELETE FROM " + table + " WHERE " + where;
-        Map<String, Object> result = queryFull(sql);
-        Object affected = result.get("rows_affected");
-        return affected != null ? ((Number) affected).intValue() : 0;
+        List<Map<String, Object>> matches = findAll(table, where, null, 0);
+        int deleted = 0;
+        for (Map<String, Object> row : matches) {
+            String id = (String) row.get("_id");
+            if (id != null && delete(table, id)) {
+                deleted++;
+            }
+        }
+        return deleted;
     }
 
     /**
      * Count documents matching where.
-     *
-     * @param table Table name
-     * @param where Optional SQL WHERE clause
-     * @return Count of matching documents
      */
     public int countWhere(String table, String where) {
-        String sql;
-        if (where != null && !where.isEmpty()) {
-            sql = "SELECT COUNT(*) FROM " + table + " WHERE " + where;
-        } else {
-            sql = "SELECT COUNT(*) FROM " + table;
+        if (where == null || where.isEmpty()) {
+            return count(table);
         }
-        List<Map<String, Object>> rows = query(sql);
-        if (rows.isEmpty()) return 0;
-        Map<String, Object> row = rows.get(0);
-        for (String key : new String[]{"COUNT(*)", "count(*)", "count", "COUNT"}) {
-            if (row.containsKey(key)) return ((Number) row.get(key)).intValue();
-        }
-        // Fallback: return first numeric value
-        for (Object val : row.values()) {
-            if (val instanceof Number) return ((Number) val).intValue();
-        }
-        return 0;
+        return findAll(table, where, null, 0).size();
     }
 
     /** Count all documents in a table. */
     public int countWhere(String table) {
         return countWhere(table, null);
+    }
+
+    /** Scan all documents in a table by iterating IDs. */
+    private List<Map<String, Object>> scanAll(String table) {
+        int total = count(table);
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int i = 1; rows.size() < total && i < total + 200; i++) {
+            String docId = table + "_" + i;
+            Map<String, Object> doc = get(table, docId);
+            if (doc != null) {
+                rows.add(doc);
+            }
+        }
+        return rows;
+    }
+
+    /** Check if a row matches a simple WHERE clause (col op value [AND ...]). */
+    private boolean matchesWhere(Map<String, Object> row, String where) {
+        // Split by AND
+        String[] conditions = where.split("(?i)\\s+AND\\s+");
+        for (String cond : conditions) {
+            cond = cond.trim();
+            String[] ops = {">=", "<=", "!=", "<>", ">", "<", "="};
+            boolean matched = false;
+            for (String op : ops) {
+                int idx = cond.indexOf(op);
+                if (idx > 0) {
+                    String col = cond.substring(0, idx).trim();
+                    String val = cond.substring(idx + op.length()).trim();
+                    val = val.replaceAll("^['\"]|['\"]$", ""); // strip quotes
+                    Object rowVal = row.get(col);
+                    if (rowVal == null) return false;
+                    if (!compareValues(rowVal, val, op)) return false;
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) return false;
+        }
+        return true;
+    }
+
+    /** Compare a row value to a string value with an operator. */
+    private boolean compareValues(Object rowVal, String val, String op) {
+        try {
+            double rv = (rowVal instanceof Number) ? ((Number) rowVal).doubleValue() : Double.parseDouble(rowVal.toString());
+            double cv = Double.parseDouble(val);
+            switch (op) {
+                case ">=":
+                    return rv >= cv;
+                case "<=":
+                    return rv <= cv;
+                case ">":
+                    return rv > cv;
+                case "<":
+                    return rv < cv;
+                case "!=":
+                case "<>":
+                    return rv != cv;
+                case "=":
+                    return rv == cv;
+                default:
+                    return false;
+            }
+        } catch (NumberFormatException e) {
+            String sv = rowVal.toString();
+            switch (op) {
+                case "=":
+                    return sv.equals(val);
+                case "!=":
+                case "<>":
+                    return !sv.equals(val);
+                default:
+                    return false;
+            }
+        }
     }
 
     /**
