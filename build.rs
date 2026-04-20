@@ -20,7 +20,7 @@ fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap_or_default());
 
     // Determine the native library name for this platform
-    let (lib_file, link_name) = if cfg!(target_os = "windows") {
+    let (lib_file, _link_name) = if cfg!(target_os = "windows") {
         ("overdrive.dll", "overdrive")
     } else if cfg!(target_os = "macos") {
         ("liboverdrive.dylib", "overdrive")
@@ -28,12 +28,10 @@ fn main() {
         ("liboverdrive.so", "overdrive")
     };
 
-    // Only emit native linking directives when building the native FFI library.
-    // Normal SDK usage loads the DLL at runtime via libloading — no .lib needed.
-    if lib_dir.exists() && cfg!(feature = "ffi") {
-        println!("cargo:rustc-link-search=native={}", lib_dir.display());
-        println!("cargo:rustc-link-lib=dylib={}", link_name);
-    }
+    // The SDK uses libloading for runtime dynamic loading — no link-time
+    // linking against the native library is needed. The lib/ directory
+    // is only used to copy the native library to the output directory
+    // for convenience during development.
 
     // Copy the native library to the output directory so it's found at runtime
     // This helps `cargo run` and `cargo test` work without manual setup
