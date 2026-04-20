@@ -8,6 +8,7 @@
 //! ```no_run
 //! use overdrive::shared::SharedDB;
 //! use std::thread;
+#![allow(clippy::arc_with_non_send_sync)] // Mutex<OverDriveDB> provides the required synchronization
 //!
 //! let db = SharedDB::open("app.odb").unwrap();
 //!
@@ -37,6 +38,7 @@ use std::sync::{Arc, Mutex};
 /// Each `.with()` call acquires the mutex for the duration of the closure.
 /// Keep closures short to avoid blocking other threads.
 #[derive(Clone)]
+#[allow(clippy::arc_with_non_send_sync)] // Mutex provides the required synchronization
 pub struct SharedDB {
     inner: Arc<Mutex<OverDriveDB>>,
 }

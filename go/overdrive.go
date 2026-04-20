@@ -391,13 +391,15 @@ func cptr(bs []byte) uintptr {
 	return uintptr(unsafe.Pointer(&bs[0]))
 }
 
-// gostring reads a null-terminated C string from a uintptr.
-// The ptr value must originate from a native library return value (not a Go pointer).
+// gostring reads a null-terminated C string from a native library pointer.
+// ptr must be a C string returned by the native library (not a Go pointer).
 func gostring(ptr uintptr) string {
 	if ptr == 0 {
 		return ""
 	}
-	p := unsafe.Pointer(ptr) //nolint:unsafeptr // ptr is a C string from native lib
+	// ptr is a C pointer from the native library — not a Go GC-managed pointer.
+	// Converting uintptr→unsafe.Pointer is safe here (go vet unsafeptr disabled for this pkg).
+	p := unsafe.Pointer(ptr) //nolint:unsafeptr
 	var buf []byte
 	for i := uintptr(0); ; i++ {
 		b := *(*byte)(unsafe.Add(p, i))

@@ -480,10 +480,7 @@ impl NativeDB {
                 }
                 Err(_) => {
                     // Fallback: basic integrity check via table scan
-                    let tables_str = match self.list_tables() {
-                        Ok(tables) => tables,
-                        Err(_) => vec![],
-                    };
+                    let tables_str = self.list_tables().unwrap_or_default();
                     let result = serde_json::json!({
                         "valid": true,
                         "pages_checked": 0,

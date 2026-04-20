@@ -163,11 +163,8 @@ fn execute_select(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryRes
             columns.push(col);
         }
         
-        if pos < tokens.len() && tokens[pos] == "," {
-            pos += 1;
-        } else {
-            pos += 1;
-        }
+        // Advance past comma separator if present, otherwise advance past current token
+        pos += 1;
     }
     
     // Expect FROM
@@ -370,7 +367,7 @@ fn execute_aggregate(func: &str, arg: &str, data: &[Value]) -> Value {
 }
 
 /// Sort data by a column
-fn sort_data(data: &mut Vec<Value>, column: &str, descending: bool) {
+fn sort_data(data: &mut [Value], column: &str, descending: bool) {
     data.sort_by(|a, b| {
         let va = a.get(column);
         let vb = b.get(column);
@@ -456,17 +453,17 @@ fn evaluate_condition(row: &Value, condition: &(String, String, String)) -> bool
     match op.as_str() {
         "=" | "==" => {
             if let Ok(n) = clean_val.parse::<f64>() {
-                field_val.as_f64().map_or(false, |fv| (fv - n).abs() < f64::EPSILON)
+                field_val.as_f64().is_some_and(|fv| (fv - n).abs() < f64::EPSILON)
             } else {
-                field_val.as_str().map_or(false, |s| s == clean_val)
+                field_val.as_str().is_some_and(|s| s == clean_val)
                     || field_val.to_string().trim_matches('"') == clean_val
             }
         }
         "!=" | "<>" => {
             if let Ok(n) = clean_val.parse::<f64>() {
-                field_val.as_f64().map_or(true, |fv| (fv - n).abs() >= f64::EPSILON)
+                !field_val.as_f64().is_some_and(|fv| (fv - n).abs() < f64::EPSILON)
             } else {
-                field_val.as_str().map_or(true, |s| s != clean_val)
+                field_val.as_str().is_none_or(|s| s != clean_val)
             }
         }
         ">" => compare_values(field_val, clean_val) > 0,
@@ -554,18 +551,17 @@ fn execute_update(db: &mut OverDriveDB, tokens: &[String], raw_sql: &str) -> Sdk
         where_pos += 1;
     }
     
-    let matched_ids: Vec<String>;
-    if where_pos < tokens.len() && tokens[where_pos].to_uppercase() == "WHERE" {
+    let matched_ids: Vec<String> = if where_pos < tokens.len() && tokens[where_pos].to_uppercase() == "WHERE" {
         where_pos += 1;
         let filtered = apply_where_filter(all_data, tokens, &mut where_pos);
-        matched_ids = filtered.iter()
+        filtered.iter()
             .filter_map(|r| r.get("_id").and_then(|v| v.as_str()).map(|s| s.to_string()))
-            .collect();
+            .collect()
     } else {
-        matched_ids = all_data.iter()
+        all_data.iter()
             .filter_map(|r| r.get("_id").and_then(|v| v.as_str()).map(|s| s.to_string()))
-            .collect();
-    }
+            .collect()
+    };
     
     let mut affected = 0;
     for id in &matched_ids {
@@ -593,13 +589,12 @@ fn execute_delete(db: &mut OverDriveDB, tokens: &[String]) -> SdkResult<QueryRes
     let all_data = db.scan(&table)?;
     
     let mut pos = 3;
-    let matched: Vec<Value>;
-    if pos < tokens.len() && tokens[pos].to_uppercase() == "WHERE" {
+    let matched: Vec<Value> = if pos < tokens.len() && tokens[pos].to_uppercase() == "WHERE" {
         pos += 1;
-        matched = apply_where_filter(all_data, tokens, &mut pos);
+        apply_where_filter(all_data, tokens, &mut pos)
     } else {
-        matched = all_data;
-    }
+        all_data
+    };
     
     let ids: Vec<String> = matched.iter()
         .filter_map(|r| r.get("_id").and_then(|v| v.as_str()).map(|s| s.to_string()))

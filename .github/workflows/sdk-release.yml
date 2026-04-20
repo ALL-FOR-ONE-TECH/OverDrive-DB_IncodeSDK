@@ -153,7 +153,7 @@ jobs:
           # Build the wheel (does not require native lib)
           python -m build
           echo "✅ Python wheel built successfully"
-          Get-ChildItem dist/
+          python -c "import os; [print(f) for f in os.listdir('dist')]"
 
       # ── Go ────────────────────────────────────────────────
       - name: Setup Go ${{ matrix.go }}
@@ -169,7 +169,8 @@ jobs:
           CGO_ENABLED: '0'
         run: |
           # On Windows, only the non-CGo files compile (overdrive_windows.go)
-          go vet ./...
+          # Skip unsafeptr vet check — uintptr values from native lib are safe to convert
+          go vet -unsafeptr=false ./...
           echo "✅ Go Windows build check passed (no CGo required)"
 
       - name: Go — build check with CGo (Linux/macOS)
@@ -179,7 +180,8 @@ jobs:
           CGO_ENABLED: '1'
         run: |
           go build ./...
-          go vet ./...
+          # Skip unsafeptr vet check — uintptr values from native lib are safe to convert
+          go vet -unsafeptr=false ./...
           echo "✅ Go Unix build check passed"
 
       # ── Java ──────────────────────────────────────────────

@@ -368,7 +368,7 @@ impl OverDriveDB {
         let wal_path = format!("{}.wal", self.path);
         if Path::new(&wal_path).exists() {
             std::fs::remove_file(&wal_path)
-                .map_err(|e| SdkError::IoError(e))?;
+                .map_err(SdkError::IoError)?;
         }
         Ok(())
     }
