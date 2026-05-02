@@ -30,7 +30,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Resolve version
         id: ver
@@ -51,6 +50,11 @@ jobs:
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Configure npm auth
+        if: steps.npm_check.outputs.skip == 'false'
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+
       - name: Install & publish
         if: steps.npm_check.outputs.skip == 'false'
         run: |
@@ -58,8 +62,6 @@ jobs:
           npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version
           npm install --ignore-scripts
           npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PyPI — overdrive-db
@@ -224,6 +226,7 @@ jobs:
     name: "🚀 GitHub Release"
     needs: [publish-npm, publish-pypi, publish-cargo, publish-maven, publish-go]
     runs-on: ubuntu-latest
+    if: always() && !cancelled()
     steps:
       - uses: actions/checkout@v4
 
