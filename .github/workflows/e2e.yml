@@ -1,0 +1,90 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: ${{ matrix.lang }} on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Rust
+          - os: windows-latest
+            lang: Rust
+            setup: |
+              rustup update stable
+            run: cargo test --manifest-path rust/Cargo.toml --test e2e -- --nocapture
+
+          # Node.js
+          - os: windows-latest
+            lang: Node.js
+            setup: ""
+            run: cd nodejs && npm install --silent && node test/e2e.js
+
+          # Python
+          - os: windows-latest
+            lang: Python
+            setup: pip install pytest
+            run: cd python && python -m pytest tests/test_e2e.py -v
+            env_extra: "PYTHONIOENCODING=utf-8"
+
+          # Go
+          - os: windows-latest
+            lang: Go
+            setup: ""
+            run: cd go && go test -v .
+
+          # Java
+          - os: windows-latest
+            lang: Java
+            setup: ""
+            run: cd java && mvn test -Dtest=OverdriveDbE2ETest --no-transfer-progress
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        if: matrix.lang == 'Rust'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        if: matrix.lang == 'Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python
+        if: matrix.lang == 'Python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Go
+        if: matrix.lang == 'Go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Install Java
+        if: matrix.lang == 'Java'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Setup (${{ matrix.lang }})
+        if: matrix.setup != ''
+        run: ${{ matrix.setup }}
+
+      - name: Run ${{ matrix.lang }} e2e tests
+        run: ${{ matrix.run }}
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
