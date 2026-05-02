@@ -63,3 +63,7 @@ tempfile = "3.10"
 [[test]]
 name = "sdk_v14_tests"
 path = "tests/sdk_v14_tests.rs"
+
+[[test]]
+name = "e2e"
+path = "tests/e2e.rs"
