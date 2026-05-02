@@ -1,325 +1,88 @@
-<p align="center">
-  <h1 align="center">⚡ OverDrive-DB — InCode SDK v2.0.0</h1>
-  <p align="center">
-    <strong>Embeddable hybrid SQL+NoSQL document database. Like SQLite, but for JSON.</strong><br/>
-    Import the package. Open a file. Query your data. <em>No server needed.</em>
-  </p>
-  <p align="center">
-    <a href="https://crates.io/crates/overdrive-db"><img src="https://img.shields.io/crates/v/overdrive-db?style=flat-square&color=orange&logo=rust" alt="crates.io"/></a>
-    <a href="https://pypi.org/project/overdrive-db/"><img src="https://img.shields.io/pypi/v/overdrive-db?style=flat-square&color=3776ab&logo=python" alt="PyPI"/></a>
-    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/packages"><img src="https://img.shields.io/badge/maven-2.0.0-007ec6?style=flat-square&logo=apache-maven" alt="maven"/></a>
-    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-green?style=flat-square" alt="license"/></a>
-  </p>
-</p>
+# overdrive-db (Rust SDK)
+
+> ⚠️ **Package renamed**: This crate was previously published as `overdrive-sdk`. The canonical crate is now [`overdrive-db`](https://crates.io/crates/overdrive-db).
+>
+> **Please use:**
+> ```toml
+> [dependencies]
+> overdrive-db = "2.2"
+> ```
 
 ---
+
+# OverDrive-DB — Embedded Document Database
+
+[![Crates.io](https://img.shields.io/crates/v/overdrive-db)](https://crates.io/crates/overdrive-db)
+[![License](https://img.shields.io/crates/l/overdrive-db)](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK)
+[![GitHub](https://img.shields.io/badge/GitHub-IncodeSDK-blue)](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK)
+
+Zero-config embedded JSON document database with ACID transactions, AES-256 encryption, and 6 storage engines — available in Rust, Python, Node.js, Java, and Go.
 
 ## Install
 
-```bash
-pip install overdrive-db                # Python
-npm install overdrive-db                # Node.js
-cargo add overdrive-db                  # Rust
-go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go@v2.0.0  # Go
+```toml
+[dependencies]
+overdrive-db = "2.2"
 ```
 
-**Java (Maven):**
-```xml
-<repositories>
-  <repository>
-    <id>github-overdrive</id>
-    <url>https://maven.pkg.github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK</url>
-  </repository>
-</repositories>
-<dependency>
-    <groupId>com.afot</groupId>
-    <artifactId>overdrive-db</artifactId>
-    <version>2.0.0</version>
-</dependency>
-```
+## Quick Start
 
-**C/C++:** Download `overdrive.h` + native library from [GitHub Releases](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases/latest).
+```rust
+use overdrive::OverdriveDb;
 
----
+fn main() {
+    let odb = OverdriveDb::open("myapp.odb").unwrap();
 
-## Hello World
+    // Insert
+    odb.insert("users", r#"{"name":"Alice","age":30}"#).unwrap();
 
-### Python
-```python
-from overdrive import OverDrive
+    // Query
+    let rows = odb.select("users", "age > 25").unwrap();
+    println!("{}", rows);
 
-db = OverDrive.open("myapp.odb")
-db.insert("users", {"name": "Alice", "age": 30})
-print(db.query("SELECT * FROM users"))
-db.close()
-```
+    // Count
+    let n = odb.count("users").unwrap();
+    println!("Total: {}", n);
 
-### Node.js
-```javascript
-const { OverDrive } = require('overdrive-db');
-
-const db = OverDrive.open('myapp.odb');
-db.insert('users', { name: 'Alice', age: 30 });
-console.log(db.query('SELECT * FROM users'));
-db.close();
-```
-
-### Java
-```java
-import com.afot.overdrive.OverDrive;
-
-try (OverDrive db = OverDrive.open("myapp.odb")) {
-    db.insert("users", Map.of("name", "Alice", "age", 30));
-    System.out.println(db.query("SELECT * FROM users"));
+    odb.close();
 }
 ```
 
-### Go
-```go
-db, _ := overdrive.Open("myapp.odb")
-defer db.Close()
-db.Insert("users", map[string]any{"name": "Alice", "age": 30})
-result, _ := db.Query("SELECT * FROM users")
-fmt.Println(result.Rows)
-```
+## Storage Engines
 
-### Rust
-```rust
-use overdrive::OverDriveDB;
-
-let mut db = OverDriveDB::open("myapp.odb").unwrap();
-db.create_table("users").unwrap();
-db.insert("users", &serde_json::json!({"name": "Alice", "age": 30})).unwrap();
-let result = db.query("SELECT * FROM users WHERE age > 25").unwrap();
-println!("{} rows", result.rows.len());
-db.close().unwrap();
-```
-
-### C
-```c
-#include "overdrive.h"
-
-ODB* db = overdrive_open("myapp.odb");
-overdrive_create_table(db, "users");
-char* id = overdrive_insert(db, "users", "{\"name\":\"Alice\",\"age\":30}");
-overdrive_free_string(id);
-
-char* result = overdrive_query(db, "SELECT * FROM users");
-printf("%s\n", result);
-overdrive_free_string(result);
-
-overdrive_close(db);
-```
-
----
+| Engine | Use Case | Latency |
+|---|---|---|
+| Disk (default) | General-purpose persistent storage | ~1ms |
+| RAM | Caching, sessions, leaderboards | <1µs |
+| Vector | Similarity search, embeddings | ~5ms |
+| Time-Series | Metrics, IoT, logs | ~2ms |
+| Graph | Social networks, knowledge graphs | ~3ms |
+| Streaming | Event queues, message brokers | ~1ms |
 
 ## Features
 
-| Feature | Description |
+- ✅ Zero-config — open a file, start querying
+- ✅ SQL queries — SELECT, INSERT, UPDATE, DELETE, WHERE, ORDER BY, LIMIT
+- ✅ Aggregations — COUNT, SUM, AVG, MIN, MAX, GROUP BY
+- ✅ Full-text search
+- ✅ B-Tree indexes
+- ✅ ACID transactions (MVCC, 4 isolation levels)
+- ✅ AES-256-GCM encryption via Argon2id
+- ✅ Cross-platform — Windows, Linux x64/ARM64, macOS x64/ARM64
+
+## Platform Support
+
+| Platform | Binary |
 |---|---|
-| **Zero-config** | Open a file, start querying — no setup needed |
-| **JSON Native** | Store, query, and index JSON documents |
-| **SQL Queries** | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `WHERE`, `ORDER BY`, `LIMIT` |
-| **Aggregations** | `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `GROUP BY` |
-| **Full-text Search** | Built-in text search across documents |
-| **B-Tree Indexes** | Secondary indexes for fast lookups |
-| **ACID Transactions** | MVCC with 4 isolation levels |
-| **Encryption** | AES-256-GCM via Argon2id key derivation |
-| **RAM Engine** | Sub-microsecond in-memory storage with snapshot/restore |
-| **Watchdog** | File integrity monitoring |
-| **Cross-platform** | Windows x64, Linux x64/ARM64, macOS x64/ARM64 |
-
----
-
-## 6 Storage Engines
-
-| Engine | Use Case | Latency |
-|--------|----------|---------|
-| `Disk` (default) | General-purpose persistent storage | ~1ms |
-| `RAM` | Caching, sessions, leaderboards | <1µs |
-| `Vector` | Similarity search, embeddings | ~5ms |
-| `Time-Series` | Metrics, IoT, logs | ~2ms |
-| `Graph` | Social networks, knowledge graphs | ~3ms |
-| `Streaming` | Event queues, message brokers | ~1ms |
-
----
-
-## API Reference
-
-All SDKs share the same API surface. Method names follow each language's conventions.
-
-### Database Lifecycle
-
-| Python | Node.js | Java | Go | Rust | C |
-|--------|---------|------|----|------|---|
-| `OverDrive.open(path)` | `OverDrive.open(path)` | `OverDrive.open(path)` | `overdrive.Open(path)` | `OverDriveDB::open(path)` | `overdrive_open(path)` |
-| `db.close()` | `db.close()` | `db.close()` | `db.Close()` | `db.close()` | `overdrive_close(db)` |
-| `db.sync()` | `db.sync()` | `db.sync()` | `db.Sync()` | `db.sync()` | `overdrive_sync(db)` |
-| `OverDrive.version()` | `OverDrive.version()` | `OverDrive.version()` | `overdrive.Version()` | `OverDriveDB::version()` | `overdrive_version()` |
-
-### CRUD Operations
-
-| Operation | Python | Node.js / Java | Go | Rust |
-|-----------|--------|----------------|-----|------|
-| Insert | `db.insert(table, doc)` | `db.insert(table, doc)` | `db.Insert(table, doc)` | `db.insert(table, &doc)` |
-| Get | `db.get(table, id)` | `db.get(table, id)` | `db.Get(table, id)` | `db.get(table, id)` |
-| Update | `db.update(table, id, updates)` | `db.update(table, id, updates)` | `db.Update(table, id, updates)` | `db.update(table, id, &updates)` |
-| Delete | `db.delete(table, id)` | `db.delete(table, id)` | `db.Delete(table, id)` | `db.delete(table, id)` |
-| Count | `db.count(table)` | `db.count(table)` | `db.Count(table)` | `db.count(table)` |
-| Query | `db.query(sql)` | `db.query(sql)` | `db.Query(sql)` | `db.query(sql)` |
-| Safe Query | `db.query_safe(sql, params)` | `db.querySafe(sql, params)` | `db.QuerySafe(sql, params...)` | `db.query_safe(sql, &params)` |
-| Search | `db.search(table, text)` | `db.search(table, text)` | `db.Search(table, text)` | `db.search(table, text)` |
-
-### Tables
-
-| Operation | Python | Node.js / Java | Go |
-|-----------|--------|----------------|-----|
-| Create | `db.create_table(name)` | `db.createTable(name)` | `db.CreateTable(name)` |
-| Drop | `db.drop_table(name)` | `db.dropTable(name)` | `db.DropTable(name)` |
-| List | `db.list_tables()` | `db.listTables()` | `db.ListTables()` |
-| Exists | `db.table_exists(name)` | `db.tableExists(name)` | `db.TableExists(name)` |
-
-### v1.4 Features
-
-| Feature | Python | Node.js | Java | Go |
-|---------|--------|---------|------|----|
-| Password open | `OverDrive.open(path, password=...)` | `OverDrive.open(path, {password:...})` | `OverDrive.open(path, password)` | `overdrive.Open(path, WithPassword(...))` |
-| RAM engine | `OverDrive.open(path, engine="RAM")` | `OverDrive.open(path, {engine:"RAM"})` | `OverDrive.open(path, "RAM")` | `overdrive.Open(path, WithEngine("RAM"))` |
-| Watchdog | `OverDrive.watchdog(path)` | `OverDrive.watchdog(path)` | `OverDrive.watchdog(path)` | `overdrive.Watchdog(path)` |
-| Transaction callback | `db.transaction(fn)` | `db.transaction(fn)` | `db.transaction(fn)` | `db.Transaction(fn, isolation)` |
-| Find one | `db.findOne(table, where)` | `db.findOne(table, where)` | `db.findOne(table, where)` | `db.FindOne(table, where)` |
-| Find all | `db.findAll(table, ...)` | `db.findAll(table, ...)` | `db.findAll(table, ...)` | `db.FindAll(table, ...)` |
-| Update many | `db.updateMany(table, where, updates)` | `db.updateMany(...)` | `db.updateMany(...)` | `db.UpdateMany(...)` |
-| Delete many | `db.deleteMany(table, where)` | `db.deleteMany(...)` | `db.deleteMany(...)` | `db.DeleteMany(...)` |
-| Snapshot | `db.snapshot(path)` | `db.snapshot(path)` | `db.snapshot(path)` | `db.Snapshot(path)` |
-| Memory usage | `db.memoryUsage()` | `db.memoryUsage()` | `db.memoryUsage()` | `db.MemoryUsageStats()` |
-
-### Transactions
-
-All SDKs support MVCC transactions with 4 isolation levels:
-
-| Level | Value | Description |
-|-------|-------|-------------|
-| Read Uncommitted | 0 | Fastest, least safe |
-| Read Committed | 1 | Default |
-| Repeatable Read | 2 | Snapshot isolation |
-| Serializable | 3 | Full isolation |
-
-### Security
-
-| Feature | Usage |
-|---------|-------|
-| Password encryption | `open(path, password=...)` — AES-256-GCM via Argon2id |
-| Env var key | `open_encrypted(path, "ODB_KEY")` — key from environment |
-| Parameterized queries | `query_safe(sql, params)` — blocks SQL injection |
-| Encrypted backup | `backup(dest)` — syncs + copies + hardens permissions |
-| WAL cleanup | `cleanup_wal()` — removes replay-attack surface |
-| File permissions | Auto `chmod 600` (Linux/Mac) or Windows ACL on open |
-
-### C/C++ Memory Rules
-
-Every `char*` returned by `overdrive_*` functions **must** be freed with `overdrive_free_string()`.
-Do **not** free: `overdrive_last_error()`, `overdrive_version()` (static pointers).
-
-### Error Codes
-
-| Code | Type | When |
-|------|------|------|
-| `ODB-AUTH-*` | Authentication | Wrong password, key too short |
-| `ODB-TABLE-*` | Table | Not found, already exists |
-| `ODB-QUERY-*` | Query | SQL syntax error |
-| `ODB-TXN-*` | Transaction | Deadlock, conflict |
-| `ODB-IO-*` | I/O | File not found, corrupted |
-| `ODB-FFI-*` | FFI | Native library not found |
-
----
-
-## Native Library Downloads
-
-| Platform | File | Size |
-|----------|------|------|
-| Windows x64 | `overdrive.dll` | ~3.3 MB |
-| Linux x64 | `liboverdrive.so` | ~4.1 MB |
-| Linux ARM64 | `liboverdrive-arm64.so` | ~3.9 MB |
-| macOS x64 | `liboverdrive.dylib` | ~3.8 MB |
-| macOS ARM64 | `liboverdrive-arm64.dylib` | ~3.6 MB |
-
-Download from [GitHub Releases](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases/latest).
-
-> Python and Rust auto-download the native library on first use. Node.js downloads on `npm install`. Java and Go require manual placement.
-
----
-
-## Project Structure
-
-```
-OverDrive-DB_IncodeSDK/
-├── Cargo.toml              # Workspace configuration
-├── README.md               # This file
-├── native/                 # 🆕 Centralized native libraries
-│   ├── windows/            # Windows x64 libraries
-│   │   └── overdrive.dll   # Windows native library
-│   ├── linux/              # Linux libraries
-│   │   ├── x64/liboverdrive.so      # Linux x64
-│   │   └── arm64/liboverdrive.so    # Linux ARM64
-│   └── macos/              # macOS libraries
-│       ├── x64/liboverdrive.dylib   # macOS Intel
-│       └── arm64/liboverdrive.dylib # macOS Apple Silicon
-├── sdks/                   # 🆕 All language SDKs
-│   ├── rust/               # Rust SDK (crates.io)
-│   │   ├── src/lib.rs      # OverDriveDB API
-│   │   ├── src/dynamic.rs  # Runtime native library loader
-│   │   ├── src/ffi.rs      # C FFI exports
-│   │   └── Cargo.toml      # Rust package config
-│   ├── python/             # Python SDK (ctypes)
-│   │   └── overdrive/      # Python package
-│   ├── nodejs/             # Node.js SDK (koffi + TypeScript)
-│   ├── java/               # Java SDK (JNA)
-│   │   └── src/main/       # Java source + resources
-│   ├── go/                 # Go SDK (syscall, no CGo)
-│   └── c/                  # C/C++ SDK
-│       └── include/overdrive.h  # C header file
-├── scripts/                # 🆕 Build automation
-│   ├── build-all.sh        # Cross-platform build script
-│   ├── version-sync.sh     # Version synchronization
-│   └── publish-all.ps1     # Publishing automation
-├── docs/                   # Full documentation
-├── examples/               # Working examples for all languages
-└── .github/workflows/      # CI/CD pipelines
-```
-
-### 🆕 What's New in v2.0.0
-
-**Major Restructuring**: The SDK has been completely reorganized for better maintainability and user experience:
-
-- **Centralized Native Libraries**: All platform-specific libraries now live in `native/` directory
-- **Organized SDK Structure**: Each language SDK is cleanly separated in `sdks/` directory  
-- **Automated Build Scripts**: New build automation in `scripts/` directory
-- **Backward Compatibility**: All existing code continues to work without changes
-- **Reduced Duplication**: Eliminated 5 duplicate native library copies (45% storage savings)
-- **Simplified Maintenance**: 83% reduction in maintenance overhead
-
-**Migration**: Existing users don't need to change anything - all SDKs automatically detect and use the new structure while maintaining fallbacks to old locations.
-
----
+| Windows x64 | `overdrive.dll` |
+| Linux x64 | `liboverdrive.so` |
+| Linux ARM64 | `liboverdrive.so` |
+| macOS x64 | `liboverdrive.dylib` |
+| macOS ARM64 | `liboverdrive.dylib` |
 
 ## Links
 
-| Resource | URL |
-|----------|-----|
-| GitHub | https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK |
-| Releases | https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases |
-| crates.io | https://crates.io/crates/overdrive-db |
-| PyPI | https://pypi.org/project/overdrive-db/ |
-| Issues | https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/issues |
-| Website | https://overdrive-db.com |
-
-## License
-
-Licensed under either **MIT** or **Apache-2.0**, at your option.
-
----
-
-<p align="center">
-  Built by <a href="https://github.com/ALL-FOR-ONE-TECH"><strong>ALL FOR ONE TECH</strong></a>
-</p>
+- 📦 [crates.io/crates/overdrive-db](https://crates.io/crates/overdrive-db)
+- 🐙 [GitHub Repository](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK)
+- 🌐 [overdrive-db.com](https://overdrive-db.com)
+- 📖 [Documentation](https://docs.rs/overdrive-db)
