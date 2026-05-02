@@ -22,7 +22,7 @@ jobs:
 
 # ══════════════════════════════════════════════════════════════════════════════
 # NPM — overdrive-db
-# Secret: NPM_TOKEN  (npmjs.com → Access Tokens → Automation token)
+# Secret: NPM_TOKEN  (npmjs.com → Access Tokens → Automation token) ✅
 # ══════════════════════════════════════════════════════════════════════════════
   publish-npm:
     name: "📦 NPM — overdrive-db"
@@ -53,7 +53,7 @@ jobs:
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PyPI — overdrive-db
-# Secret: PYPI_TOKEN  (pypi.org → Account Settings → API Tokens)
+# Secret: PYPI_API_TOKEN  (pypi.org → Account Settings → API Tokens) ✅
 # ══════════════════════════════════════════════════════════════════════════════
   publish-pypi:
     name: "🐍 PyPI — overdrive-db"
@@ -86,11 +86,11 @@ jobs:
           python -m twine upload dist/* --non-interactive
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # crates.io — overdrive-sdk
-# Secret: CARGO_REGISTRY_TOKEN  (crates.io → Account Settings → API Tokens)
+# Secret: CRATES_IO_TOKEN  (crates.io → Account Settings → API Tokens) ✅
 # ══════════════════════════════════════════════════════════════════════════════
   publish-cargo:
     name: "🦀 crates.io — overdrive-sdk"
@@ -111,7 +111,7 @@ jobs:
       - name: Publish to crates.io
         run: cargo publish --manifest-path rust/Cargo.toml --allow-dirty
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # GitHub Packages (Maven) — com.afot:overdrive-db
