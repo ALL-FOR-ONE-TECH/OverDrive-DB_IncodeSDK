@@ -14,7 +14,7 @@ const os = require('os');
 
 // Always download from the official IncodeSDK repo releases
 const REPO = 'ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK';
-const VERSION = 'v1.4.3';
+const VERSION = 'v1.4.5';
 
 function getBinaryInfo() {
     const platform = os.platform();

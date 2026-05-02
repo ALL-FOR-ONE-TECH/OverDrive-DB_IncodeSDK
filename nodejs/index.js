@@ -43,7 +43,9 @@ function findLibrary() {
     ];
 
     for (const p of searchPaths) {
-        if (fs.existsSync(p)) return p;
+        try {
+            if (fs.existsSync(p) && fs.statSync(p).size > 100_000) return p;
+        } catch (_) {}
     }
     return libName; // Fall back to system path
 }

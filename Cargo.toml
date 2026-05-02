@@ -59,3 +59,7 @@ zeroize = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3.10"
+
+[[test]]
+name = "sdk_v14_tests"
+path = "tests/sdk_v14_tests.rs"

@@ -1,4 +1,4 @@
-// Package overdrive provides Go bindings for the OverDrive InCode SDK (v1.4.3).
+// Package overdrive provides Go bindings for the OverDrive InCode SDK (v1.4.5).
 //
 // Embeddable document database — like SQLite for JSON.
 //

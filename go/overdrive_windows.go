@@ -26,7 +26,7 @@ func (w *windowsLib) sym(name string) (unsafe.Pointer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("GetProcAddress(%s): %w", name, err)
 	}
-	return unsafe.Pointer(proc.Addr()), nil
+	return unsafe.Pointer(proc.Addr()), nil //nolint:unsafeptr -- proc.Addr() is a Windows PROC, not a Go pointer
 }
 
 func (w *windowsLib) close() {
