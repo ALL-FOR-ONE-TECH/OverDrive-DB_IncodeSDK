@@ -3,26 +3,23 @@ name: Publish to All Registries
 on:
   push:
     tags:
-      - 'v*'           # triggers on: git tag v2.2.0 && git push --tags
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g. 2.2.0)'
+        description: 'Version to publish (e.g. 2.2.1)'
         required: true
-        default: '2.2.0'
-
-env:
-  SDK_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        default: '2.2.1'
 
 permissions:
   contents: write
-  packages: write   # needed for GitHub Packages (Maven)
+  packages: write
 
 jobs:
 
 # ══════════════════════════════════════════════════════════════════════════════
 # NPM — overdrive-db
-# Secret: NPM_TOKEN  (npmjs.com → Access Tokens → Automation token) ✅
+# Secret: NPM_TOKEN ✅
 # ══════════════════════════════════════════════════════════════════════════════
   publish-npm:
     name: "📦 NPM — overdrive-db"
@@ -35,17 +32,30 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Set version
+      - name: Resolve version
+        id: ver
         run: |
-          VERSION="${{ env.SDK_VERSION }}"
-          VERSION="${VERSION#v}"   # strip leading 'v' if present
-          cd nodejs
-          npm version "$VERSION" --no-git-tag-version
-          echo "Publishing overdrive-db@$VERSION"
+          V="${{ github.event.inputs.version || github.ref_name }}"
+          V="${V#v}"
+          echo "version=$V" >> $GITHUB_OUTPUT
+          echo "Publishing overdrive-db@$V"
+
+      - name: Check if already on NPM
+        id: npm_check
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          if npm view "overdrive-db@$V" version &>/dev/null; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⚠️ overdrive-db@$V already exists on NPM — skipping"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Install & publish
+        if: steps.npm_check.outputs.skip == 'false'
         run: |
           cd nodejs
+          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version
           npm install --ignore-scripts
           npm publish --access public
         env:
@@ -53,7 +63,7 @@ jobs:
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PyPI — overdrive-db
-# Secret: PYPI_API_TOKEN  (pypi.org → Account Settings → API Tokens) ✅
+# Secret: PYPI_API_TOKEN ✅  (--skip-existing handles duplicates)
 # ══════════════════════════════════════════════════════════════════════════════
   publish-pypi:
     name: "🐍 PyPI — overdrive-db"
@@ -68,29 +78,31 @@ jobs:
       - name: Install build tools
         run: pip install build twine
 
-      - name: Set version
+      - name: Resolve version
+        id: ver
         run: |
-          VERSION="${{ env.SDK_VERSION }}"
-          VERSION="${VERSION#v}"
-          sed -i "s/^version = .*/version = \"$VERSION\"/" python/pyproject.toml
-          echo "Publishing overdrive-db==$VERSION to PyPI"
+          V="${{ github.event.inputs.version || github.ref_name }}"
+          V="${V#v}"
+          echo "version=$V" >> $GITHUB_OUTPUT
+          sed -i "s/^version = .*/version = \"$V\"/" python/pyproject.toml
 
       - name: Build wheel
-        run: |
-          cd python
-          python -m build
+        run: cd python && python -m build
 
-      - name: Upload to PyPI
+      - name: Upload to PyPI (skip if exists)
         run: |
           cd python
-          python -m twine upload dist/* --non-interactive
+          python -m twine upload dist/* \
+            --non-interactive \
+            --skip-existing \
+            --verbose
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # crates.io — overdrive-sdk
-# Secret: CRATES_IO_TOKEN  (crates.io → Account Settings → API Tokens) ✅
+# Secret: CRATES_IO_TOKEN ✅
 # ══════════════════════════════════════════════════════════════════════════════
   publish-cargo:
     name: "🦀 crates.io — overdrive-sdk"
@@ -100,15 +112,29 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Set version
+      - name: Resolve version
+        id: ver
         run: |
-          VERSION="${{ env.SDK_VERSION }}"
-          VERSION="${VERSION#v}"
-          sed -i "s/^version.*=.*/version = \"$VERSION\"/" rust/Cargo.toml
-          sed -i "s/^version.*=.*/version = \"$VERSION\"/" Cargo.toml
-          echo "Publishing overdrive-sdk v$VERSION to crates.io"
+          V="${{ github.event.inputs.version || github.ref_name }}"
+          V="${V#v}"
+          echo "version=$V" >> $GITHUB_OUTPUT
+          sed -i "0,/^version/s/^version.*/version = \"$V\"/" rust/Cargo.toml
+          sed -i "0,/^version/s/^version.*/version = \"$V\"/" Cargo.toml
+
+      - name: Check if already on crates.io
+        id: cargo_check
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          if cargo search overdrive-sdk --limit 1 2>/dev/null | grep -q "\"$V\""; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⚠️ overdrive-sdk $V already on crates.io — skipping"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Publishing overdrive-sdk v$V"
+          fi
 
       - name: Publish to crates.io
+        if: steps.cargo_check.outputs.skip == 'false'
         run: cargo publish --manifest-path rust/Cargo.toml --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
@@ -129,18 +155,19 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Set version
+      - name: Resolve version
+        id: ver
         run: |
-          VERSION="${{ env.SDK_VERSION }}"
-          VERSION="${VERSION#v}"
-          mvn -f java/pom.xml versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
-          echo "Publishing com.afot:overdrive-db:$VERSION"
+          V="${{ github.event.inputs.version || github.ref_name }}"
+          V="${V#v}"
+          echo "version=$V" >> $GITHUB_OUTPUT
+          mvn -f java/pom.xml versions:set -DnewVersion="$V" -DgenerateBackupPoms=false -q
 
-      - name: Configure Maven for GitHub Packages
+      - name: Configure Maven settings
         run: |
           mkdir -p ~/.m2
           cat > ~/.m2/settings.xml << 'EOF'
-          <settings>
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
             <servers>
               <server>
                 <id>github</id>
@@ -151,24 +178,23 @@ jobs:
           </settings>
           EOF
 
-      - name: Add GitHub Packages distribution to pom.xml
+      - name: Inject distributionManagement into pom.xml
         run: |
-          # Inject distributionManagement into pom.xml if not present
           if ! grep -q "distributionManagement" java/pom.xml; then
-            sed -i 's|</project>|<distributionManagement><repository><id>github</id><name>GitHub Packages</name><url>https://maven.pkg.github.com/${{ github.repository }}</url></repository></distributionManagement></project>|' java/pom.xml
+            sed -i "s|</project>|<distributionManagement><repository><id>github</id><name>GitHub Packages</name><url>https://maven.pkg.github.com/${{ github.repository }}</url></repository></distributionManagement></project>|" java/pom.xml
           fi
 
-      - name: Publish to GitHub Packages
+      - name: Deploy to GitHub Packages
         run: mvn -f java/pom.xml deploy -DskipTests --no-transfer-progress
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Go — github.com/ALL-FOR-ONE-TECH/overdrive-db-go
-# No token needed — Go modules are published via git tags
+# No secret — Go modules are just git tags
 # ══════════════════════════════════════════════════════════════════════════════
   publish-go:
-    name: "🐹 Go Module tag"
+    name: "🐹 Go Module — overdrive-db-go"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -176,26 +202,23 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Push go/ prefixed tag for Go module proxy
+      - name: Push go/ prefixed tag (idempotent)
         run: |
-          VERSION="${{ env.SDK_VERSION }}"
-          VERSION="${VERSION#v}"
-          GO_TAG="go/v${VERSION}"
-
+          V="${{ github.event.inputs.version || github.ref_name }}"
+          V="${V#v}"
+          GO_TAG="go/v${V}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          if git rev-parse "$GO_TAG" >/dev/null 2>&1; then
-            echo "Tag $GO_TAG already exists — skipping"
+          if git ls-remote --tags origin "$GO_TAG" | grep -q "$GO_TAG"; then
+            echo "⚠️ Tag $GO_TAG already exists on remote — skipping"
           else
             git tag "$GO_TAG"
             git push origin "$GO_TAG"
-            echo "✅ Pushed $GO_TAG — module available at:"
-            echo "   go get github.com/ALL-FOR-ONE-TECH/overdrive-db-go@v${VERSION}"
+            echo "✅ go get github.com/ALL-FOR-ONE-TECH/overdrive-db-go@v${V}"
           fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SUMMARY — GitHub Release with all artifacts
+# GITHUB RELEASE — with all artifacts
 # ══════════════════════════════════════════════════════════════════════════════
   create-release:
     name: "🚀 GitHub Release"
@@ -204,38 +227,59 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Python wheel for release asset
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Resolve version
+        id: ver
         run: |
-          pip install build
+          V="${{ github.event.inputs.version || github.ref_name }}"
+          V="${V#v}"
+          echo "version=$V" >> $GITHUB_OUTPUT
+
+      - name: Build Python wheel
+        run: |
+          pip install build -q
+          sed -i "s/^version = .*/version = \"${{ steps.ver.outputs.version }}\"/" python/pyproject.toml
           cd python && python -m build
 
-      - name: Build Java JAR for release asset
-        run: mvn -f java/pom.xml package -DskipTests --no-transfer-progress -q
+      - name: Build Java JAR
+        run: |
+          mvn -f java/pom.xml versions:set -DnewVersion="${{ steps.ver.outputs.version }}" -DgenerateBackupPoms=false -q
+          mvn -f java/pom.xml package -DskipTests --no-transfer-progress -q
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: "OverDrive-DB InCode SDK ${{ github.ref_name }}"
+          name: "OverDrive-DB InCode SDK v${{ steps.ver.outputs.version }}"
+          generate_release_notes: false
           body: |
-            ## OverDrive-DB InCode SDK ${{ github.ref_name }}
+            ## OverDrive-DB InCode SDK v${{ steps.ver.outputs.version }}
 
-            Zero-config embedded document database SDK — all 5 languages.
+            Zero-config embedded document database — 6 storage engines, ACID transactions, AES-256 encryption.
 
-            ### Published to
-            | Registry | Package | Install |
+            ### 📦 Install
+
+            | Language | Registry | Command |
             |---|---|---|
-            | NPM | `overdrive-db` | `npm install overdrive-db` |
-            | PyPI | `overdrive-db` | `pip install overdrive-db` |
-            | crates.io | `overdrive-sdk` | `cargo add overdrive-sdk` |
-            | GitHub Packages | `com.afot:overdrive-db` | see pom.xml |
-            | Go | `overdrive-db-go` | `go get github.com/ALL-FOR-ONE-TECH/overdrive-db-go@${{ github.ref_name }}` |
+            | Node.js | NPM | `npm install overdrive-db` |
+            | Python | PyPI | `pip install overdrive-db` |
+            | Rust | crates.io | `cargo add overdrive-sdk` |
+            | Java | GitHub Packages | `com.afot:overdrive-db:${{ steps.ver.outputs.version }}` |
+            | Go | pkg.go.dev | `go get github.com/ALL-FOR-ONE-TECH/overdrive-db-go@v${{ steps.ver.outputs.version }}` |
 
-            ### Native Libraries
-            Built for: Windows x64, Linux x64, Linux ARM64, macOS x64, macOS ARM64
+            ### 🖥️ Native Libraries
+            Pre-built for: **Windows x64** · **Linux x64** · **Linux ARM64** · **macOS x64** · **macOS ARM64**
 
-            ### E2E Tests
-            50/50 passing across all 5 SDKs ✅
+            ### ✅ E2E Tests
+            50/50 passing across all 5 SDKs
           files: |
             python/dist/*.whl
             python/dist/*.tar.gz
