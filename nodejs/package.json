@@ -1,0 +1,20 @@
+{
+  "name": "overdrive-db",
+  "version": "2.2.0",
+  "description": "OverDrive-DB embedded SDK — zero-config JSON document database",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/basic.js",
+    "e2e": "node test/e2e.js"
+  },
+  "keywords": ["database", "embedded", "nosql", "json", "document"],
+  "author": "AFOT <admin@afot.in>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
+  },
+  "dependencies": {
+    "koffi": "^2.9.0"
+  }
+}

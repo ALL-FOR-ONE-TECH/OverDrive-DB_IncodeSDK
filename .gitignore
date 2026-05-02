@@ -1,0 +1,13 @@
+# OverDrive-DB IncodeSDK
+target/
+node_modules/
+*.odb
+*.wal
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+.gradle/
+*.class
+*.jar
+!lib/

@@ -1,0 +1,21 @@
+[package]
+name        = "overdrive-sdk"
+version     = "2.2.0"
+edition     = "2021"
+authors     = ["AFOT <admin@afot.in>"]
+description = "OverDrive-DB embedded SDK — zero-config JSON document database"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
+homepage    = "https://overdrive-db.com"
+keywords    = ["database", "embedded", "nosql", "json", "document"]
+categories  = ["database"]
+
+[lib]
+name = "overdrive"
+
+[dependencies]
+serde_json = "1.0"
+libloading = "0.8"
+
+[dev-dependencies]
+serde_json = "1.0"

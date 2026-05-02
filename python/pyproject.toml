@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "overdrive-db"
+version = "2.2.0"
+description = "OverDrive-DB embedded SDK — zero-config JSON document database"
+authors = [{name = "AFOT", email = "admin@afot.in"}]
+license = {text = "MIT"}
+keywords = ["database", "embedded", "nosql", "json", "document"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Database",
+]
+requires-python = ">=3.8"
+
+[project.urls]
+Homepage = "https://overdrive-db.com"
+Repository = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
