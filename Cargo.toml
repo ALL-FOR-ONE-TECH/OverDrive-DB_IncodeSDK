@@ -1,3 +1,27 @@
 [workspace]
-members = ["rust"]
+members = [
+    "rust",
+]
 resolver = "2"
+
+[workspace.package]
+version     = "2.2.0"
+edition     = "2021"
+authors     = ["AFOT <admin@afot.in>"]
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
+homepage    = "https://overdrive-db.com"
+description = "OverDrive-DB SDK - zero-config embedded JSON document database"
+keywords    = ["database", "embedded", "nosql", "json", "document"]
+categories  = ["database"]
+
+[workspace.dependencies]
+serde_json  = "1.0"
+libloading  = "0.8"
+thiserror   = "1.0"
+
+[profile.release]
+opt-level       = 3
+lto             = true
+codegen-units   = 1
+panic           = "abort"
