@@ -1,6 +1,6 @@
 [package]
-name        = "overdrive-sdk"
-version     = "2.2.2"
+name        = "overdrive-db"
+version     = "1.0.0"
 edition     = "2021"
 authors     = ["AFOT <admin@afot.in>"]
 description = "OverDrive-DB embedded SDK - zero-config JSON document database with ACID transactions, AES-256 encryption and 6 storage engines"

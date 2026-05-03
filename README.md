@@ -48,38 +48,38 @@ go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go@v1.0.0  # Go
 ```python
 from overdrive import OverDrive
 
-db = OverDrive.open("myapp.odb")
-db.insert("users", {"name": "Alice", "age": 30})
-print(db.query("SELECT * FROM users"))
-db.close()
+odb = OverDrive.open("myapp.odb")
+odb.insert("users", {"name": "Alice", "age": 30})
+print(odb.query("SELECT * FROM users"))
+odb.close()
 ```
 
 ### Node.js
 ```javascript
 const { OverDrive } = require('overdrive-db');
 
-const db = OverDrive.open('myapp.odb');
-db.insert('users', { name: 'Alice', age: 30 });
-console.log(db.query('SELECT * FROM users'));
-db.close();
+const odb = OverDrive.open('myapp.odb');
+odb.insert('users', { name: 'Alice', age: 30 });
+console.log(odb.query('SELECT * FROM users'));
+odb.close();
 ```
 
 ### Java
 ```java
 import com.afot.overdrive.OverDrive;
 
-try (OverDrive db = OverDrive.open("myapp.odb")) {
-    db.insert("users", Map.of("name", "Alice", "age", 30));
-    System.out.println(db.query("SELECT * FROM users"));
+try (OverDrive odb = OverDrive.open("myapp.odb")) {
+    odb.insert("users", Map.of("name", "Alice", "age", 30));
+    System.out.println(odb.query("SELECT * FROM users"));
 }
 ```
 
 ### Go
 ```go
-db, _ := overdrive.Open("myapp.odb")
-defer db.Close()
-db.Insert("users", map[string]any{"name": "Alice", "age": 30})
-result, _ := db.Query("SELECT * FROM users")
+odb, _ := overdrive.Open("myapp.odb")
+defer odb.Close()
+odb.Insert("users", map[string]any{"name": "Alice", "age": 30})
+result, _ := odb.Query("SELECT * FROM users")
 fmt.Println(result.Rows)
 ```
 
@@ -87,28 +87,28 @@ fmt.Println(result.Rows)
 ```rust
 use overdrive::OverDriveDB;
 
-let mut db = OverDriveDB::open("myapp.odb").unwrap();
-db.create_table("users").unwrap();
-db.insert("users", &serde_json::json!({"name": "Alice", "age": 30})).unwrap();
-let result = db.query("SELECT * FROM users WHERE age > 25").unwrap();
+let mut odb = OverDriveDB::open("myapp.odb").unwrap();
+odb.create_table("users").unwrap();
+odb.insert("users", &serde_json::json!({"name": "Alice", "age": 30})).unwrap();
+let result = odb.query("SELECT * FROM users WHERE age > 25").unwrap();
 println!("{} rows", result.rows.len());
-db.close().unwrap();
+odb.close().unwrap();
 ```
 
 ### C
 ```c
 #include "overdrive.h"
 
-ODB* db = overdrive_open("myapp.odb");
-overdrive_create_table(db, "users");
-char* id = overdrive_insert(db, "users", "{\"name\":\"Alice\",\"age\":30}");
+ODB* odb = overdrive_open("myapp.odb");
+overdrive_create_table(odb, "users");
+char* id = overdrive_insert(odb, "users", "{\"name\":\"Alice\",\"age\":30}");
 overdrive_free_string(id);
 
-char* result = overdrive_query(db, "SELECT * FROM users");
+char* result = overdrive_query(odb, "SELECT * FROM users");
 printf("%s\n", result);
 overdrive_free_string(result);
 
-overdrive_close(db);
+overdrive_close(odb);
 ```
 
 ---
@@ -153,31 +153,31 @@ All SDKs share the same API surface. Method names follow each language's convent
 | Python | Node.js | Java | Go | Rust | C |
 |--------|---------|------|----|------|---|
 | `OverDrive.open(path)` | `OverDrive.open(path)` | `OverDrive.open(path)` | `overdrive.Open(path)` | `OverDriveDB::open(path)` | `overdrive_open(path)` |
-| `db.close()` | `db.close()` | `db.close()` | `db.Close()` | `db.close()` | `overdrive_close(db)` |
-| `db.sync()` | `db.sync()` | `db.sync()` | `db.Sync()` | `db.sync()` | `overdrive_sync(db)` |
+| `odb.close()` | `odb.close()` | `odb.close()` | `odb.Close()` | `odb.close()` | `overdrive_close(odb)` |
+| `odb.sync()` | `odb.sync()` | `odb.sync()` | `odb.Sync()` | `odb.sync()` | `overdrive_sync(odb)` |
 | `OverDrive.version()` | `OverDrive.version()` | `OverDrive.version()` | `overdrive.Version()` | `OverDriveDB::version()` | `overdrive_version()` |
 
 ### CRUD Operations
 
 | Operation | Python | Node.js / Java | Go | Rust |
 |-----------|--------|----------------|-----|------|
-| Insert | `db.insert(table, doc)` | `db.insert(table, doc)` | `db.Insert(table, doc)` | `db.insert(table, &doc)` |
-| Get | `db.get(table, id)` | `db.get(table, id)` | `db.Get(table, id)` | `db.get(table, id)` |
-| Update | `db.update(table, id, updates)` | `db.update(table, id, updates)` | `db.Update(table, id, updates)` | `db.update(table, id, &updates)` |
-| Delete | `db.delete(table, id)` | `db.delete(table, id)` | `db.Delete(table, id)` | `db.delete(table, id)` |
-| Count | `db.count(table)` | `db.count(table)` | `db.Count(table)` | `db.count(table)` |
-| Query | `db.query(sql)` | `db.query(sql)` | `db.Query(sql)` | `db.query(sql)` |
-| Safe Query | `db.query_safe(sql, params)` | `db.querySafe(sql, params)` | `db.QuerySafe(sql, params...)` | `db.query_safe(sql, &params)` |
-| Search | `db.search(table, text)` | `db.search(table, text)` | `db.Search(table, text)` | `db.search(table, text)` |
+| Insert | `odb.insert(table, doc)` | `odb.insert(table, doc)` | `odb.Insert(table, doc)` | `odb.insert(table, &doc)` |
+| Get | `odb.get(table, id)` | `odb.get(table, id)` | `odb.Get(table, id)` | `odb.get(table, id)` |
+| Update | `odb.update(table, id, updates)` | `odb.update(table, id, updates)` | `odb.Update(table, id, updates)` | `odb.update(table, id, &updates)` |
+| Delete | `odb.delete(table, id)` | `odb.delete(table, id)` | `odb.Delete(table, id)` | `odb.delete(table, id)` |
+| Count | `odb.count(table)` | `odb.count(table)` | `odb.Count(table)` | `odb.count(table)` |
+| Query | `odb.query(sql)` | `odb.query(sql)` | `odb.Query(sql)` | `odb.query(sql)` |
+| Safe Query | `odb.query_safe(sql, params)` | `odb.querySafe(sql, params)` | `odb.QuerySafe(sql, params...)` | `odb.query_safe(sql, &params)` |
+| Search | `odb.search(table, text)` | `odb.search(table, text)` | `odb.Search(table, text)` | `odb.search(table, text)` |
 
 ### Tables
 
 | Operation | Python | Node.js / Java | Go |
 |-----------|--------|----------------|-----|
-| Create | `db.create_table(name)` | `db.createTable(name)` | `db.CreateTable(name)` |
-| Drop | `db.drop_table(name)` | `db.dropTable(name)` | `db.DropTable(name)` |
-| List | `db.list_tables()` | `db.listTables()` | `db.ListTables()` |
-| Exists | `db.table_exists(name)` | `db.tableExists(name)` | `db.TableExists(name)` |
+| Create | `odb.create_table(name)` | `odb.createTable(name)` | `odb.CreateTable(name)` |
+| Drop | `odb.drop_table(name)` | `odb.dropTable(name)` | `odb.DropTable(name)` |
+| List | `odb.list_tables()` | `odb.listTables()` | `odb.ListTables()` |
+| Exists | `odb.table_exists(name)` | `odb.tableExists(name)` | `odb.TableExists(name)` |
 
 ### v1.4 Features
 
@@ -186,13 +186,13 @@ All SDKs share the same API surface. Method names follow each language's convent
 | Password open | `OverDrive.open(path, password=...)` | `OverDrive.open(path, {password:...})` | `OverDrive.open(path, password)` | `overdrive.Open(path, WithPassword(...))` |
 | RAM engine | `OverDrive.open(path, engine="RAM")` | `OverDrive.open(path, {engine:"RAM"})` | `OverDrive.open(path, "RAM")` | `overdrive.Open(path, WithEngine("RAM"))` |
 | Watchdog | `OverDrive.watchdog(path)` | `OverDrive.watchdog(path)` | `OverDrive.watchdog(path)` | `overdrive.Watchdog(path)` |
-| Transaction callback | `db.transaction(fn)` | `db.transaction(fn)` | `db.transaction(fn)` | `db.Transaction(fn, isolation)` |
-| Find one | `db.findOne(table, where)` | `db.findOne(table, where)` | `db.findOne(table, where)` | `db.FindOne(table, where)` |
-| Find all | `db.findAll(table, ...)` | `db.findAll(table, ...)` | `db.findAll(table, ...)` | `db.FindAll(table, ...)` |
-| Update many | `db.updateMany(table, where, updates)` | `db.updateMany(...)` | `db.updateMany(...)` | `db.UpdateMany(...)` |
-| Delete many | `db.deleteMany(table, where)` | `db.deleteMany(...)` | `db.deleteMany(...)` | `db.DeleteMany(...)` |
-| Snapshot | `db.snapshot(path)` | `db.snapshot(path)` | `db.snapshot(path)` | `db.Snapshot(path)` |
-| Memory usage | `db.memoryUsage()` | `db.memoryUsage()` | `db.memoryUsage()` | `db.MemoryUsageStats()` |
+| Transaction callback | `odb.transaction(fn)` | `odb.transaction(fn)` | `odb.transaction(fn)` | `odb.Transaction(fn, isolation)` |
+| Find one | `odb.findOne(table, where)` | `odb.findOne(table, where)` | `odb.findOne(table, where)` | `odb.FindOne(table, where)` |
+| Find all | `odb.findAll(table, ...)` | `odb.findAll(table, ...)` | `odb.findAll(table, ...)` | `odb.FindAll(table, ...)` |
+| Update many | `odb.updateMany(table, where, updates)` | `odb.updateMany(...)` | `odb.updateMany(...)` | `odb.UpdateMany(...)` |
+| Delete many | `odb.deleteMany(table, where)` | `odb.deleteMany(...)` | `odb.deleteMany(...)` | `odb.DeleteMany(...)` |
+| Snapshot | `odb.snapshot(path)` | `odb.snapshot(path)` | `odb.snapshot(path)` | `odb.Snapshot(path)` |
+| Memory usage | `odb.memoryUsage()` | `odb.memoryUsage()` | `odb.memoryUsage()` | `odb.MemoryUsageStats()` |
 
 ### Transactions
 
