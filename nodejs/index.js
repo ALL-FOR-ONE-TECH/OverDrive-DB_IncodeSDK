@@ -1,6 +1,6 @@
 'use strict';
 /**
- * OverDrive-DB Node.js SDK v2.2.0
+ * OverDrive-DB Node.js SDK v1.3.1
  * Class:    OverdriveDb
  * Instance: odb  (convention)
  *

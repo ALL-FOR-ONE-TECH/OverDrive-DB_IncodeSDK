@@ -81,19 +81,20 @@ try (OverDrive odb = OverDrive.open("myapp.odb")) {
 odb, _ := overdrive.Open("myapp.odb")
 defer odb.Close()
 odb.Insert("users", map[string]any{"name": "Alice", "age": 30})
-result, _ := odb.Query("SELECT * FROM users")
-fmt.Println(result.Rows)
+rows, _ := odb.Query("SELECT * FROM users")
+fmt.Println(rows)
 ```
 
 ### Rust
 ```rust
-use overdrive::OverDriveDB;
+use overdrive::OverdriveDb;
+use serde_json::json;
 
-let mut odb = OverDriveDB::open("myapp.odb").unwrap();
+let mut odb = OverdriveDb::open("myapp.odb").unwrap();
 odb.create_table("users").unwrap();
-odb.insert("users", &serde_json::json!({"name": "Alice", "age": 30})).unwrap();
-let result = odb.query("SELECT * FROM users WHERE age > 25").unwrap();
-println!("{} rows", result.rows.len());
+let id = odb.insert("users", &json!({"name": "Alice", "age": 30})).unwrap();
+let rows = odb.query("SELECT * FROM users WHERE age > 25").unwrap();
+println!("{} rows", rows.len());
 odb.close().unwrap();
 ```
 

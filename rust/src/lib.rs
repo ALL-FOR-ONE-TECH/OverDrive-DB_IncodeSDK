@@ -1,4 +1,4 @@
-//! OverDrive-DB Rust SDK v2.2.0
+//! OverDrive-DB Rust SDK v1.0.0
 //!
 //! Zero-config embedded document database with SQL, MVCC transactions,
 //! and 6 storage engines.

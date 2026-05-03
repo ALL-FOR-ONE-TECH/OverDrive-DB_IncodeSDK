@@ -1,5 +1,5 @@
 """
-OverDrive-DB Python SDK v2.2.0
+OverDrive-DB Python SDK v1.0.0
 
 Usage:
     from overdrive import OverdriveDb
