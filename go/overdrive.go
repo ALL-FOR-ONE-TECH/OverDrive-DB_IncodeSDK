@@ -1,5 +1,5 @@
 // Package overdrive provides the OverDrive-DB embedded SDK for Go.
-// Version: 2.2.0
+// Version: 1.0.0
 //
 // Usage:
 //   odb, err := overdrive.Open("app.odb")
