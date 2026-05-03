@@ -1,0 +1,7 @@
+# Prevent npm from scanning parent directories by providing a local ignore file
+node_modules/
+npm-debug.log
+*.odb
+*.wal
+*.txt
+_tmp_*

@@ -1,0 +1,75 @@
+{
+    "name": "@all-for-one-tech/overdrive-db",
+    "version": "2.0.0",
+    "description": "OverDrive-DB — High-performance embeddable hybrid SQL+NoSQL document database. ACID-compliant with 6 storage engines (Disk, RAM, Vector, Time-Series, Graph, Streaming). Features password-based encryption, auto-table creation, transaction callbacks, watchdog monitoring, and RAM engine caching.",
+    "keywords": [
+        "overdrive-db",
+        "overdrivedb",
+        "afot",
+        "all-for-one-tech",
+        "database",
+        "document-database",
+        "json-database",
+        "sql",
+        "nosql",
+        "embedded-database",
+        "sqlite-alternative",
+        "mvcc",
+        "btree",
+        "full-text-search",
+        "rust",
+        "acid",
+        "fast",
+        "serverless-db",
+        "ram-engine",
+        "watchdog",
+        "password-encryption",
+        "in-memory-database"
+    ],
+    "homepage": "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK",
+    "bugs": {
+        "url": "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK.git"
+    },
+    "license": "MIT OR Apache-2.0",
+    "author": "ALL FOR ONE TECH <admin@afot.in> (https://github.com/ALL-FOR-ONE-TECH)",
+    "type": "commonjs",
+    "main": "index.js",
+    "types": "index.d.ts",
+    "directories": {
+        "test": "test"
+    },
+    "files": [
+        "index.js",
+        "index.d.ts",
+        "scripts/",
+        "lib/",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "postinstall": "node scripts/download-binary.js",
+        "test": "node test/basic.js"
+    },
+    "dependencies": {
+        "koffi": "^2.9.0"
+    },
+    "engines": {
+        "node": ">=14.0.0"
+    },
+    "os": [
+        "win32",
+        "linux",
+        "darwin"
+    ],
+    "cpu": [
+        "x64",
+        "arm64"
+    ],
+    "publishConfig": {
+        "access": "public"
+    }
+}

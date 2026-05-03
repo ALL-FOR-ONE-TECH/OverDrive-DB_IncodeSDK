@@ -46,20 +46,22 @@ go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go@v1.0.0  # Go
 
 ### Python
 ```python
-from overdrive import OverDrive
+from overdrive import OverdriveDb
 
-odb = OverDrive.open("myapp.odb")
-odb.insert("users", {"name": "Alice", "age": 30})
+odb = OverdriveDb.open("myapp.odb")
+odb.create_table("users")
+id = odb.insert("users", {"name": "Alice", "age": 30})
 print(odb.query("SELECT * FROM users"))
 odb.close()
 ```
 
 ### Node.js
 ```javascript
-const { OverDrive } = require('overdrive-db');
+const { OverdriveDb } = require('overdrive-db');
 
-const odb = OverDrive.open('myapp.odb');
-odb.insert('users', { name: 'Alice', age: 30 });
+const odb = OverdriveDb.open('myapp.odb');
+odb.createTable('users');
+const id = odb.insert('users', { name: 'Alice', age: 30 });
 console.log(odb.query('SELECT * FROM users'));
 odb.close();
 ```
@@ -152,23 +154,23 @@ All SDKs share the same API surface. Method names follow each language's convent
 
 | Python | Node.js | Java | Go | Rust | C |
 |--------|---------|------|----|------|---|
-| `OverDrive.open(path)` | `OverDrive.open(path)` | `OverDrive.open(path)` | `overdrive.Open(path)` | `OverDriveDB::open(path)` | `overdrive_open(path)` |
+| `OverdriveDb.open(path)` | `OverdriveDb.open(path)` | `OverDrive.open(path)` | `overdrive.Open(path)` | `OverDriveDB::open(path)` | `overdrive_open(path)` |
 | `odb.close()` | `odb.close()` | `odb.close()` | `odb.Close()` | `odb.close()` | `overdrive_close(odb)` |
 | `odb.sync()` | `odb.sync()` | `odb.sync()` | `odb.Sync()` | `odb.sync()` | `overdrive_sync(odb)` |
-| `OverDrive.version()` | `OverDrive.version()` | `OverDrive.version()` | `overdrive.Version()` | `OverDriveDB::version()` | `overdrive_version()` |
+| `OverdriveDb.version()` | `OverdriveDb.version()` | `OverDrive.version()` | `overdrive.Version()` | `OverDriveDB::version()` | `overdrive_version()` |
 
 ### CRUD Operations
 
-| Operation | Python | Node.js / Java | Go | Rust |
-|-----------|--------|----------------|-----|------|
-| Insert | `odb.insert(table, doc)` | `odb.insert(table, doc)` | `odb.Insert(table, doc)` | `odb.insert(table, &doc)` |
-| Get | `odb.get(table, id)` | `odb.get(table, id)` | `odb.Get(table, id)` | `odb.get(table, id)` |
-| Update | `odb.update(table, id, updates)` | `odb.update(table, id, updates)` | `odb.Update(table, id, updates)` | `odb.update(table, id, &updates)` |
-| Delete | `odb.delete(table, id)` | `odb.delete(table, id)` | `odb.Delete(table, id)` | `odb.delete(table, id)` |
-| Count | `odb.count(table)` | `odb.count(table)` | `odb.Count(table)` | `odb.count(table)` |
-| Query | `odb.query(sql)` | `odb.query(sql)` | `odb.Query(sql)` | `odb.query(sql)` |
-| Safe Query | `odb.query_safe(sql, params)` | `odb.querySafe(sql, params)` | `odb.QuerySafe(sql, params...)` | `odb.query_safe(sql, &params)` |
-| Search | `odb.search(table, text)` | `odb.search(table, text)` | `odb.Search(table, text)` | `odb.search(table, text)` |
+| Operation | Python | Node.js | Java | Go | Rust |
+|-----------|--------|---------|------|----|------|
+| Insert | `odb.insert(table, doc)` | `odb.insert(table, doc)` | `odb.insert(table, doc)` | `odb.Insert(table, doc)` | `odb.insert(table, &doc)` |
+| Insert Many | `odb.insert_many(table, docs)` | `odb.insertMany(table, docs)` | `odb.insertMany(table, docs)` | `odb.InsertBatch(table, docs)` | `odb.insert_batch(table, &docs)` |
+| Get | `odb.get(table, id)` | `odb.get(table, id)` | `odb.get(table, id)` | `odb.Get(table, id)` | `odb.get(table, id)` |
+| Update | `odb.update(table, id, patch)` | `odb.update(table, id, patch)` | `odb.update(table, id, patch)` | `odb.Update(table, id, patch)` | `odb.update(table, id, &patch)` |
+| Delete | `odb.delete(table, id)` | `odb.delete(table, id)` | `odb.delete(table, id)` | `odb.Delete(table, id)` | `odb.delete(table, id)` |
+| Count | `odb.count(table)` | `odb.count(table)` | `odb.count(table)` | `odb.Count(table)` | `odb.count(table)` |
+| Query | `odb.query(sql)` | `odb.query(sql)` | `odb.query(sql)` | `odb.Query(sql)` | `odb.query(sql)` |
+| Search | `odb.search(table, text)` | `odb.search(table, text)` | `odb.search(table, text)` | `odb.Search(table, text)` | `odb.search(table, text)` |
 
 ### Tables
 
@@ -179,20 +181,14 @@ All SDKs share the same API surface. Method names follow each language's convent
 | List | `odb.list_tables()` | `odb.listTables()` | `odb.ListTables()` |
 | Exists | `odb.table_exists(name)` | `odb.tableExists(name)` | `odb.TableExists(name)` |
 
-### v1.4 Features
+### Advanced Features
 
 | Feature | Python | Node.js | Java | Go |
 |---------|--------|---------|------|----|
-| Password open | `OverDrive.open(path, password=...)` | `OverDrive.open(path, {password:...})` | `OverDrive.open(path, password)` | `overdrive.Open(path, WithPassword(...))` |
-| RAM engine | `OverDrive.open(path, engine="RAM")` | `OverDrive.open(path, {engine:"RAM"})` | `OverDrive.open(path, "RAM")` | `overdrive.Open(path, WithEngine("RAM"))` |
-| Watchdog | `OverDrive.watchdog(path)` | `OverDrive.watchdog(path)` | `OverDrive.watchdog(path)` | `overdrive.Watchdog(path)` |
+| Password open | `OverdriveDb.open(path, password=...)` | `OverdriveDb.open(path, {password:...})` | `OverDrive.open(path, password)` | `overdrive.Open(path, WithPassword(...))` |
+| Engine select | `OverdriveDb.open(path, engine="RAM")` | `OverdriveDb.open(path, {engine:"RAM"})` | `OverDrive.open(path, "RAM")` | `overdrive.Open(path, WithEngine("RAM"))` |
 | Transaction callback | `odb.transaction(fn)` | `odb.transaction(fn)` | `odb.transaction(fn)` | `odb.Transaction(fn, isolation)` |
-| Find one | `odb.findOne(table, where)` | `odb.findOne(table, where)` | `odb.findOne(table, where)` | `odb.FindOne(table, where)` |
-| Find all | `odb.findAll(table, ...)` | `odb.findAll(table, ...)` | `odb.findAll(table, ...)` | `odb.FindAll(table, ...)` |
-| Update many | `odb.updateMany(table, where, updates)` | `odb.updateMany(...)` | `odb.updateMany(...)` | `odb.UpdateMany(...)` |
-| Delete many | `odb.deleteMany(table, where)` | `odb.deleteMany(...)` | `odb.deleteMany(...)` | `odb.DeleteMany(...)` |
-| Snapshot | `odb.snapshot(path)` | `odb.snapshot(path)` | `odb.snapshot(path)` | `odb.Snapshot(path)` |
-| Memory usage | `odb.memoryUsage()` | `odb.memoryUsage()` | `odb.memoryUsage()` | `odb.MemoryUsageStats()` |
+| Verify integrity | `odb.verify_integrity()` | `odb.verifyIntegrity()` | `odb.verifyIntegrity()` | `odb.VerifyIntegrity()` |
 
 ### Transactions
 
