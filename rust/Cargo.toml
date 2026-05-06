@@ -1,15 +1,15 @@
 [package]
 name        = "overdrive-db"
-version     = "1.0.0"
+version     = "2.3.0"
 edition     = "2021"
 authors     = ["AFOT <admin@afot.in>"]
-description = "OverDrive-DB embedded SDK - zero-config JSON document database with ACID transactions, AES-256 encryption and 6 storage engines"
+description = "OverDrive-DB embedded SDK — ACID transactions, AES-256 encryption, WAL durability, 6 storage engines. The SQLite alternative built in Rust."
 license     = "MIT OR Apache-2.0"
-repository  = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
+repository  = "https://github.com/karthikeyanV2K/OverDrive-DB"
 homepage    = "https://overdrive-db.com"
 documentation = "https://docs.rs/overdrive-db"
-keywords    = ["database", "embedded", "nosql", "json", "document"]
-categories  = ["database"]
+keywords    = ["database", "embedded", "nosql", "document", "sqlite"]
+categories  = ["database", "api-bindings"]
 readme      = "README.md"
 
 [lib]

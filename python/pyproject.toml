@@ -4,22 +4,34 @@ build-backend = "hatchling.build"
 
 [project]
 name = "overdrive-db"
-version = "1.0.0"
-description = "OverDrive-DB embedded SDK - zero-config JSON document database"
+version = "2.3.0"
+description = "OverDrive-DB — Embedded document database with ACID transactions, AES-256 encryption, WAL durability and 6 storage engines. SQLite alternative for Python."
 authors = [{name = "AFOT", email = "admin@afot.in"}]
 license = {text = "MIT"}
 readme = "README.md"
-keywords = ["database", "embedded", "nosql", "json", "document"]
+keywords = ["database", "embedded", "nosql", "json", "document", "sqlite-alternative", "acid", "encryption", "wal", "overdrive"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Topic :: Database",
+    "Topic :: Database :: Database Engines/Servers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
 ]
 requires-python = ">=3.8"
 
 [project.urls]
 Homepage = "https://overdrive-db.com"
-Repository = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
+Repository = "https://github.com/karthikeyanV2K/OverDrive-DB"
+Changelog = "https://github.com/karthikeyanV2K/OverDrive-DB/releases"
+"Bug Tracker" = "https://github.com/karthikeyanV2K/OverDrive-DB/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["overdrive"]

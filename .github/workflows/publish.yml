@@ -1,294 +1,219 @@
-name: Publish to All Registries
+name: Publish SDKs — npm · PyPI · crates.io
+
+# ┌─────────────────────────────────────────────────────────────────┐
+# │  OverDrive-DB_IncodeSDK — PUBLISH WORKFLOW                      │
+# │                                                                 │
+# │  Publishes overdrive-db to:                                     │
+# │   • npm        → npmjs.com          (NPM_TOKEN)                 │
+# │   • PyPI       → pypi.org           (PYPI_API_TOKEN)            │
+# │   • crates.io  → crates.io          (CRATES_IO_TOKEN)           │
+# │                                                                 │
+# │  Triggered by:                                                  │
+# │   • git tag push  v*.*.*  (auto-publish)                        │
+# │   • workflow_dispatch     (manual, choose targets)              │
+# └─────────────────────────────────────────────────────────────────┘
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g. 2.2.1)'
+        description: "Version to publish (e.g. 2.3.0)"
         required: true
-        default: '2.2.1'
+        default: "2.3.0"
+      targets:
+        description: "Registries to publish (all | npm | pypi | crates)"
+        required: false
+        default: "all"
+
+env:
+  SDK_VERSION: "2.3.0"
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
+
+# Helper: extract version from tag (strips 'v' prefix) or use input
+# Used in every job via: ${{ env.PUBLISH_VERSION }}
 
 jobs:
 
 # ══════════════════════════════════════════════════════════════════════════════
-# NPM — overdrive-db
-# Secret: NPM_TOKEN ✅
+# RESOLVE VERSION — single source of truth
 # ══════════════════════════════════════════════════════════════════════════════
-  publish-npm:
-    name: "📦 NPM — overdrive-db"
+
+  resolve-version:
+    name: "🔖 Resolve version"
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER="${{ github.event.inputs.version || env.SDK_VERSION }}"
+          fi
+          echo "version=${VER}" >> $GITHUB_OUTPUT
+          echo "📌 Publishing version: ${VER}"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# npm — overdrive-db on npmjs.com
+# ══════════════════════════════════════════════════════════════════════════════
+
+  publish-npm:
+    name: "📦 npm → npmjs.com"
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.targets == '' ||
+      github.event.inputs.targets == 'all' ||
+      github.event.inputs.targets == 'npm'
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
 
-      - name: Resolve version
-        id: ver
+      - name: Pin version in package.json
+        working-directory: nodejs
         run: |
-          V="${{ github.event.inputs.version || github.ref_name }}"
-          V="${V#v}"
-          echo "version=$V" >> $GITHUB_OUTPUT
-          echo "Publishing overdrive-db@$V"
+          npm version ${{ needs.resolve-version.outputs.version }} --no-git-tag-version --allow-same-version
+          echo "📦 overdrive-db@$(node -p "require('./package.json').version")"
 
-      - name: Check if already on NPM
-        id: npm_check
-        run: |
-          V="${{ steps.ver.outputs.version }}"
-          if npm view "overdrive-db@$V" version &>/dev/null; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "⚠️ overdrive-db@$V already exists on NPM — skipping"
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
+      - name: Install dependencies
+        working-directory: nodejs
+        run: npm install --ignore-scripts
 
-      - name: Configure npm auth
-        if: steps.npm_check.outputs.skip == 'false'
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+      - name: Publish
+        working-directory: nodejs
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Install & publish
-        if: steps.npm_check.outputs.skip == 'false'
-        run: |
-          cd nodejs
-          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version
-          npm install --ignore-scripts
-          npm publish --access public
+      - run: echo "✅ overdrive-db@${{ needs.resolve-version.outputs.version }} → npm"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PyPI — overdrive-db
-# Secret: PYPI_API_TOKEN ✅  (--skip-existing handles duplicates)
+# PyPI — overdrive-db on pypi.org
 # ══════════════════════════════════════════════════════════════════════════════
+
   publish-pypi:
-    name: "🐍 PyPI — overdrive-db"
+    name: "🐍 PyPI → pypi.org"
+    needs: resolve-version
     runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.targets == '' ||
+      github.event.inputs.targets == 'all' ||
+      github.event.inputs.targets == 'pypi'
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install build tools
-        run: pip install build twine
+        run: pip install --upgrade hatch build twine --quiet
 
-      - name: Resolve version
-        id: ver
+      - name: Pin version in pyproject.toml
+        working-directory: python
         run: |
-          V="${{ github.event.inputs.version || github.ref_name }}"
-          V="${V#v}"
-          echo "version=$V" >> $GITHUB_OUTPUT
-          sed -i "s/^version = .*/version = \"$V\"/" python/pyproject.toml
+          VER=${{ needs.resolve-version.outputs.version }}
+          sed -i "s/^version = .*/version = \"${VER}\"/" pyproject.toml
+          grep "^version" pyproject.toml
 
-      - name: Build wheel
-        run: cd python && python -m build
+      - name: Build wheel + sdist
+        working-directory: python
+        run: python -m build
 
-      - name: Upload to PyPI (skip if exists)
-        run: |
-          cd python
-          python -m twine upload dist/* \
-            --non-interactive \
-            --skip-existing \
-            --verbose
+      - name: Validate
+        working-directory: python
+        run: twine check dist/*
+
+      - name: Publish
+        working-directory: python
+        run: twine upload dist/* --skip-existing
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
 
+      - run: echo "✅ overdrive-db==${{ needs.resolve-version.outputs.version }} → PyPI"
+
 # ══════════════════════════════════════════════════════════════════════════════
-# crates.io — overdrive-sdk
-# Secret: CRATES_IO_TOKEN ✅
+# crates.io — overdrive-db on crates.io
 # ══════════════════════════════════════════════════════════════════════════════
-  publish-cargo:
-    name: "🦀 crates.io — overdrive-sdk"
+
+  publish-crates:
+    name: "🦀 crates.io → crates.io"
+    needs: resolve-version
     runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.targets == '' ||
+      github.event.inputs.targets == 'all' ||
+      github.event.inputs.targets == 'crates'
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Resolve version
-        id: ver
-        run: |
-          V="${{ github.event.inputs.version || github.ref_name }}"
-          V="${V#v}"
-          echo "version=$V" >> $GITHUB_OUTPUT
-          sed -i "0,/^version/s/^version.*/version = \"$V\"/" rust/Cargo.toml
-          sed -i "0,/^version/s/^version.*/version = \"$V\"/" Cargo.toml
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: crates-publish-${{ hashFiles('rust/Cargo.toml') }}
 
-      - name: Check if already on crates.io
-        id: cargo_check
+      - name: Pin version in Cargo.toml
+        working-directory: rust
         run: |
-          V="${{ steps.ver.outputs.version }}"
-          if cargo search overdrive-sdk --limit 1 2>/dev/null | grep -q "\"$V\""; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "⚠️ overdrive-sdk $V already on crates.io — skipping"
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-            echo "Publishing overdrive-sdk v$V"
-          fi
+          VER=${{ needs.resolve-version.outputs.version }}
+          sed -i "s/^version.*=.*\"[^\"]*\"/version     = \"${VER}\"/" Cargo.toml
+          grep "^version" Cargo.toml
 
-      - name: Publish to crates.io
-        if: steps.cargo_check.outputs.skip == 'false'
-        run: cargo publish --manifest-path rust/Cargo.toml --allow-dirty
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      - name: Validate package
+        working-directory: rust
+        run: cargo package --allow-dirty --list
+
+      - name: Publish
+        working-directory: rust
+        run: cargo publish --allow-dirty --token ${{ secrets.CRATES_IO_TOKEN }}
+
+      - run: echo "✅ overdrive-db ${{ needs.resolve-version.outputs.version }} → crates.io"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# GitHub Packages (Maven) — com.afot:overdrive-db
-# Uses built-in GITHUB_TOKEN — no extra secret needed
+# SUMMARY
 # ══════════════════════════════════════════════════════════════════════════════
-  publish-maven:
-    name: "☕ GitHub Packages — com.afot:overdrive-db"
+
+  summary:
+    name: "📋 Publish Summary"
+    needs: [resolve-version, publish-npm, publish-pypi, publish-crates]
     runs-on: ubuntu-latest
+    if: always()
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
-
-      - name: Resolve version
-        id: ver
+      - name: Write summary
         run: |
-          V="${{ github.event.inputs.version || github.ref_name }}"
-          V="${V#v}"
-          echo "version=$V" >> $GITHUB_OUTPUT
-          mvn -f java/pom.xml versions:set -DnewVersion="$V" -DgenerateBackupPoms=false -q
+          VER=${{ needs.resolve-version.outputs.version }}
+          npm_status="${{ needs.publish-npm.result }}"
+          pypi_status="${{ needs.publish-pypi.result }}"
+          crates_status="${{ needs.publish-crates.result }}"
 
-      - name: Configure Maven settings
-        run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml << 'EOF'
-          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
-            <servers>
-              <server>
-                <id>github</id>
-                <username>${env.GITHUB_ACTOR}</username>
-                <password>${env.GITHUB_TOKEN}</password>
-              </server>
-            </servers>
-          </settings>
-          EOF
+          icon() { case $1 in success) echo "✅";; skipped) echo "⏭️";; *) echo "❌";; esac; }
 
-      - name: Inject distributionManagement into pom.xml
-        run: |
-          if ! grep -q "distributionManagement" java/pom.xml; then
-            sed -i "s|</project>|<distributionManagement><repository><id>github</id><name>GitHub Packages</name><url>https://maven.pkg.github.com/${{ github.repository }}</url></repository></distributionManagement></project>|" java/pom.xml
-          fi
-
-      - name: Deploy to GitHub Packages
-        run: mvn -f java/pom.xml deploy -DskipTests --no-transfer-progress
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Go — github.com/ALL-FOR-ONE-TECH/overdrive-db-go
-# No secret — Go modules are just git tags
-# ══════════════════════════════════════════════════════════════════════════════
-  publish-go:
-    name: "🐹 Go Module — overdrive-db-go"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-
-      - name: Push go/ prefixed tag (idempotent)
-        run: |
-          V="${{ github.event.inputs.version || github.ref_name }}"
-          V="${V#v}"
-          GO_TAG="go/v${V}"
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git ls-remote --tags origin "$GO_TAG" | grep -q "$GO_TAG"; then
-            echo "⚠️ Tag $GO_TAG already exists on remote — skipping"
-          else
-            git tag "$GO_TAG"
-            git push origin "$GO_TAG"
-            echo "✅ go get github.com/ALL-FOR-ONE-TECH/overdrive-db-go@v${V}"
-          fi
-
-# ══════════════════════════════════════════════════════════════════════════════
-# GITHUB RELEASE — with all artifacts
-# ══════════════════════════════════════════════════════════════════════════════
-  create-release:
-    name: "🚀 GitHub Release"
-    needs: [publish-npm, publish-pypi, publish-cargo, publish-maven, publish-go]
-    runs-on: ubuntu-latest
-    if: always() && !cancelled()
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Resolve version
-        id: ver
-        run: |
-          V="${{ github.event.inputs.version || github.ref_name }}"
-          V="${V#v}"
-          echo "version=$V" >> $GITHUB_OUTPUT
-
-      - name: Build Python wheel
-        run: |
-          pip install build -q
-          sed -i "s/^version = .*/version = \"${{ steps.ver.outputs.version }}\"/" python/pyproject.toml
-          cd python && python -m build
-
-      - name: Build Java JAR
-        run: |
-          mvn -f java/pom.xml versions:set -DnewVersion="${{ steps.ver.outputs.version }}" -DgenerateBackupPoms=false -q
-          mvn -f java/pom.xml package -DskipTests --no-transfer-progress -q
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: "OverDrive-DB InCode SDK v${{ steps.ver.outputs.version }}"
-          generate_release_notes: false
-          body: |
-            ## OverDrive-DB InCode SDK v${{ steps.ver.outputs.version }}
-
-            Zero-config embedded document database — 6 storage engines, ACID transactions, AES-256 encryption.
-
-            ### 📦 Install
-
-            | Language | Registry | Command |
-            |---|---|---|
-            | Node.js | NPM | `npm install overdrive-db` |
-            | Python | PyPI | `pip install overdrive-db` |
-            | Rust | crates.io | `cargo add overdrive-sdk` |
-            | Java | GitHub Packages | `com.afot:overdrive-db:${{ steps.ver.outputs.version }}` |
-            | Go | pkg.go.dev | `go get github.com/ALL-FOR-ONE-TECH/overdrive-db-go@v${{ steps.ver.outputs.version }}` |
-
-            ### 🖥️ Native Libraries
-            Pre-built for: **Windows x64** · **Linux x64** · **Linux ARM64** · **macOS x64** · **macOS ARM64**
-
-            ### ✅ E2E Tests
-            50/50 passing across all 5 SDKs
-          files: |
-            python/dist/*.whl
-            python/dist/*.tar.gz
-            java/target/overdrive-db-*.jar
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+          echo "## 🚀 OverDrive-DB v${VER} — SDK Publish" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Registry | Package | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| npm | overdrive-db@${VER} | $(icon $npm_status) |" >> $GITHUB_STEP_SUMMARY
+          echo "| PyPI | overdrive-db==${VER} | $(icon $pypi_status) |" >> $GITHUB_STEP_SUMMARY
+          echo "| crates.io | overdrive-db ${VER} | $(icon $crates_status) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Install" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "npm install overdrive-db@${VER}" >> $GITHUB_STEP_SUMMARY
+          echo "pip install overdrive-db==${VER}" >> $GITHUB_STEP_SUMMARY
+          echo "cargo add overdrive-db@${VER}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

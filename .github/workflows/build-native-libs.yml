@@ -1,299 +1,420 @@
-name: Build Native Libraries
+name: Build Native Libraries + GitHub Release
 
-# Builds overdrive.dll/.so/.dylib for all 5 supported platforms.
-# Triggered by version tags or manually.
-# For a full release pipeline (test → build → publish), use sdk-release.yml.
+# ┌─────────────────────────────────────────────────────────────────┐
+# │  OverDrive-DB_IncodeSDK — PRIMARY BUILD & RELEASE WORKFLOW      │
+# │                                                                 │
+# │  This workflow:                                                 │
+# │  1. Checks out private server source (karthikeyanV2K/OverDrive-DB)│
+# │  2. Builds native libs for 5 platforms in parallel             │
+# │  3. Commits binaries into lib/{platform}/ in THIS repo         │
+# │  4. Creates a GitHub Release with all native libs as assets    │
+# │                                                                 │
+# │  Triggered by:                                                  │
+# │   • git tag push  v*.*.*  (full build + release)               │
+# │   • workflow_dispatch     (manual, optional release)           │
+# │   • push to main          (binary-only commit, no release)     │
+# └─────────────────────────────────────────────────────────────────┘
 
 on:
   push:
+    branches: [main]
+    paths:
+      - "lib/**"
+      - ".github/workflows/build-native-libs.yml"
     tags:
-      - 'v*'
+      - "v*.*.*"
+  # Triggered by private server repo via peter-evans/repository-dispatch
+  repository_dispatch:
+    types: [build-native-libs]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version (e.g. 1.4.0) — used for artifact naming only'
+        description: "SDK version (e.g. 2.3.0)"
         required: false
-        default: ''
+        default: "2.3.0"
+      create_release:
+        description: "Create a GitHub Release? (true/false)"
+        required: false
+        default: "false"
+      server_sha:
+        description: "Private server commit SHA to build from (leave empty for latest)"
+        required: false
+        default: ""
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  SDK_VERSION: "2.3.0"
 
 permissions:
   contents: write
 
 jobs:
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BUILD — All 5 platforms in parallel
+# Checks out karthikeyanV2K/OverDrive-DB (private) and builds with --features ffi
+# ══════════════════════════════════════════════════════════════════════════════
+
   build-windows-x64:
-    name: Windows x64
+    name: "🪟 Windows x64"
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Checkout private server source
+        uses: actions/checkout@v4
+        with:
+          repository: karthikeyanV2K/OverDrive-DB
+          path: _server
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.inputs.server_sha || 'master' }}
 
-      - name: Cache Cargo
-        uses: actions/cache@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: windows-x64-cargo-${{ hashFiles('Cargo.lock') }}
+            _server/target
+          key: win-x64-${{ hashFiles('_server/Cargo.lock') }}
+          restore-keys: win-x64-
 
-      - name: Build Windows x64 DLL (static CRT)
-        env:
-          RUSTFLAGS: "-C target-feature=+crt-static"
-        run: cargo build --release --lib --features ffi
-
-      - name: Stage artifact
+      - name: Build overdrive.dll
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          # The IncodeSDK Cargo.toml names the lib "overdrive" → overdrive.dll
-          if (Test-Path "target/release/overdrive.dll") {
-            Copy-Item "target/release/overdrive.dll" "dist/overdrive.dll"
-          } elseif (Test-Path "target/release/overdrive_db.dll") {
-            Copy-Item "target/release/overdrive_db.dll" "dist/overdrive.dll"
-          }
-          $size = [math]::Round((Get-Item "dist/overdrive.dll").Length / 1MB, 2)
-          Write-Host "overdrive.dll: $size MB"
+          cd _server
+          cargo build --release --features ffi
+          $size = [math]::Round((Get-Item "target\release\overdrive_db.dll").Length / 1MB, 2)
+          Write-Host "✅ overdrive_db.dll — $($size) MB"
 
       - name: Verify FFI symbols
         shell: pwsh
         run: |
-          $exports = dumpbin /exports dist/overdrive.dll
-          if ($exports -notmatch 'overdrive_open') {
-            Write-Error "ERROR: overdrive_open not found — was --features ffi passed?"
+          $out = & dumpbin /exports "_server\target\release\overdrive_db.dll" 2>&1
+          if ($out -notmatch 'overdrive_open') {
+            Write-Error "FAIL: overdrive_open not found in DLL exports"
             exit 1
           }
-          Write-Host "✅ Symbol verification passed"
+          Write-Host "✅ overdrive_open verified"
+
+      - name: Stage
+        run: |
+          New-Item -ItemType Directory -Force "dist\windows-x64" | Out-Null
+          Copy-Item "_server\target\release\overdrive_db.dll" "dist\windows-x64\overdrive.dll"
 
       - uses: actions/upload-artifact@v4
         with:
           name: native-windows-x64
-          path: dist/overdrive.dll
-          retention-days: 30
+          path: dist/windows-x64/overdrive.dll
+          retention-days: 7
 
   build-linux-x64:
-    name: Linux x64
-    runs-on: ubuntu-latest
+    name: "🐧 Linux x64"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Checkout private server source
+        uses: actions/checkout@v4
+        with:
+          repository: karthikeyanV2K/OverDrive-DB
+          path: _server
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.inputs.server_sha || 'master' }}
 
-      - name: Cache Cargo
-        uses: actions/cache@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: linux-x64-cargo-${{ hashFiles('Cargo.lock') }}
+            _server/target
+          key: linux-x64-${{ hashFiles('_server/Cargo.lock') }}
+          restore-keys: linux-x64-
 
-      - name: Build Linux x64 .so
-        run: cargo build --release --lib --features ffi
+      - name: Install deps
+        run: sudo apt-get update -qq && sudo apt-get install -y pkg-config libssl-dev
 
-      - name: Stage artifact
+      - name: Build liboverdrive.so
         run: |
-          mkdir -p dist
-          # IncodeSDK lib name is "overdrive" → liboverdrive.so
-          if [ -f "target/release/liboverdrive.so" ]; then
-            cp "target/release/liboverdrive.so" "dist/liboverdrive.so"
-          elif [ -f "target/release/liboverdrive_db.so" ]; then
-            cp "target/release/liboverdrive_db.so" "dist/liboverdrive.so"
-          fi
-          ls -lh dist/
+          cd _server
+          cargo build --release --features ffi
+          nm -D target/release/liboverdrive_db.so | grep -q overdrive_open && echo "✅ Symbols OK" || (echo "FAIL: overdrive_open missing" && exit 1)
 
-      - name: Verify FFI symbols
+      - name: Stage
         run: |
-          nm -D dist/liboverdrive.so | grep -q overdrive_open || \
-            (echo "ERROR: overdrive_open not found — was --features ffi passed?" && exit 1)
-          echo "✅ Symbol verification passed"
+          mkdir -p dist/linux-x64
+          cp _server/target/release/liboverdrive_db.so dist/linux-x64/liboverdrive.so
+          echo "✅ $(du -sh dist/linux-x64/liboverdrive.so | cut -f1)"
 
       - uses: actions/upload-artifact@v4
         with:
           name: native-linux-x64
-          path: dist/liboverdrive.so
-          retention-days: 30
+          path: dist/linux-x64/liboverdrive.so
+          retention-days: 7
 
   build-linux-arm64:
-    name: Linux ARM64
-    runs-on: ubuntu-latest
+    name: "🐧 Linux ARM64"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Checkout private server source
+        uses: actions/checkout@v4
+        with:
+          repository: karthikeyanV2K/OverDrive-DB
+          path: _server
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.inputs.server_sha || 'master' }}
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-gnu
 
-      - name: Install cross-compile tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Cache Cargo
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: linux-arm64-cargo-${{ hashFiles('Cargo.lock') }}
+            _server/target
+          key: linux-arm64-${{ hashFiles('_server/Cargo.lock') }}
+          restore-keys: linux-arm64-
 
-      - name: Build Linux ARM64 .so
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: cargo build --release --lib --features ffi --target aarch64-unknown-linux-gnu
-
-      - name: Stage artifact
+      - name: Install cross-linker
         run: |
-          mkdir -p dist
-          if [ -f "target/aarch64-unknown-linux-gnu/release/liboverdrive.so" ]; then
-            cp "target/aarch64-unknown-linux-gnu/release/liboverdrive.so" "dist/liboverdrive-arm64.so"
-          elif [ -f "target/aarch64-unknown-linux-gnu/release/liboverdrive_db.so" ]; then
-            cp "target/aarch64-unknown-linux-gnu/release/liboverdrive_db.so" "dist/liboverdrive-arm64.so"
-          fi
-          ls -lh dist/
+          sudo apt-get update -qq
+          sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config libssl-dev
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
-      - name: Verify FFI symbols
+      - name: Build liboverdrive.so (ARM64)
         run: |
-          nm -D dist/liboverdrive-arm64.so | grep -q overdrive_open || \
-            (echo "ERROR: overdrive_open not found — was --features ffi passed?" && exit 1)
-          echo "✅ Symbol verification passed"
+          cd _server
+          cargo build --release --features ffi --target aarch64-unknown-linux-gnu
+
+      - name: Stage
+        run: |
+          mkdir -p dist/linux-arm64
+          cp _server/target/aarch64-unknown-linux-gnu/release/liboverdrive_db.so dist/linux-arm64/liboverdrive.so
+          echo "✅ $(du -sh dist/linux-arm64/liboverdrive.so | cut -f1)"
 
       - uses: actions/upload-artifact@v4
         with:
           name: native-linux-arm64
-          path: dist/liboverdrive-arm64.so
-          retention-days: 30
+          path: dist/linux-arm64/liboverdrive.so
+          retention-days: 7
 
-  build-macos-x64:
-    name: macOS x64
-    runs-on: macos-latest
+  build-macos:
+    name: "${{ matrix.label }}"
+    runs-on: macos-14
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            label: "🍎 macOS x64 (Intel)"
+            artifact: native-macos-x64
+            out_dir: dist/macos-x64
+            lib_name: liboverdrive.dylib
+
+          - target: aarch64-apple-darwin
+            label: "🍎 macOS ARM64 (Apple Silicon)"
+            artifact: native-macos-arm64
+            out_dir: dist/macos-arm64
+            lib_name: liboverdrive.dylib
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Checkout private server source
+        uses: actions/checkout@v4
         with:
-          targets: x86_64-apple-darwin
+          repository: karthikeyanV2K/OverDrive-DB
+          path: _server
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.inputs.server_sha || 'master' }}
 
-      - name: Cache Cargo
-        uses: actions/cache@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: macos-x64-cargo-${{ hashFiles('Cargo.lock') }}
+            _server/target
+          key: macos-${{ matrix.target }}-${{ hashFiles('_server/Cargo.lock') }}
+          restore-keys: macos-${{ matrix.target }}-
 
-      - name: Build macOS x64 .dylib
-        run: cargo build --release --lib --features ffi --target x86_64-apple-darwin
-
-      - name: Stage artifact
+      - name: Build liboverdrive.dylib
         run: |
-          mkdir -p dist
-          if [ -f "target/x86_64-apple-darwin/release/liboverdrive.dylib" ]; then
-            cp "target/x86_64-apple-darwin/release/liboverdrive.dylib" "dist/liboverdrive.dylib"
-          elif [ -f "target/x86_64-apple-darwin/release/liboverdrive_db.dylib" ]; then
-            cp "target/x86_64-apple-darwin/release/liboverdrive_db.dylib" "dist/liboverdrive.dylib"
-          fi
-          ls -lh dist/
+          cd _server
+          cargo build --release --features ffi --target ${{ matrix.target }}
+          ls -lh target/${{ matrix.target }}/release/liboverdrive_db.dylib
 
-      - name: Verify FFI symbols
+      - name: Stage
         run: |
-          nm -gU dist/liboverdrive.dylib | grep -q overdrive_open || \
-            (echo "ERROR: overdrive_open not found — was --features ffi passed?" && exit 1)
-          echo "✅ Symbol verification passed"
+          mkdir -p ${{ matrix.out_dir }}
+          cp _server/target/${{ matrix.target }}/release/liboverdrive_db.dylib \
+             ${{ matrix.out_dir }}/${{ matrix.lib_name }}
+          echo "✅ $(du -sh ${{ matrix.out_dir }}/${{ matrix.lib_name }} | cut -f1)"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: native-macos-x64
-          path: dist/liboverdrive.dylib
-          retention-days: 30
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.out_dir }}/${{ matrix.lib_name }}
+          retention-days: 7
 
-  build-macos-arm64:
-    name: macOS ARM64
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
+# ══════════════════════════════════════════════════════════════════════════════
+# COMMIT — Commit all native libs into lib/{platform}/ in THIS repo
+# ══════════════════════════════════════════════════════════════════════════════
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-
-      - name: Cache Cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: macos-arm64-cargo-${{ hashFiles('Cargo.lock') }}
-
-      - name: Build macOS ARM64 .dylib
-        run: cargo build --release --lib --features ffi --target aarch64-apple-darwin
-
-      - name: Stage artifact
-        run: |
-          mkdir -p dist
-          if [ -f "target/aarch64-apple-darwin/release/liboverdrive.dylib" ]; then
-            cp "target/aarch64-apple-darwin/release/liboverdrive.dylib" "dist/liboverdrive-arm64.dylib"
-          elif [ -f "target/aarch64-apple-darwin/release/liboverdrive_db.dylib" ]; then
-            cp "target/aarch64-apple-darwin/release/liboverdrive_db.dylib" "dist/liboverdrive-arm64.dylib"
-          fi
-          ls -lh dist/
-
-      - name: Verify FFI symbols
-        run: |
-          nm -gU dist/liboverdrive-arm64.dylib | grep -q overdrive_open || \
-            (echo "ERROR: overdrive_open not found — was --features ffi passed?" && exit 1)
-          echo "✅ Symbol verification passed"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: native-macos-arm64
-          path: dist/liboverdrive-arm64.dylib
-          retention-days: 30
-
-  # ── Create GitHub Release (tag pushes only) ────────────────────────────────
-  release:
-    name: Create GitHub Release
-    needs: [build-windows-x64, build-linux-x64, build-linux-arm64, build-macos-x64, build-macos-arm64]
+  commit-libs:
+    name: "📦 Commit libs to repo"
+    needs: [build-windows-x64, build-linux-x64, build-linux-arm64, build-macos]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    outputs:
+      committed: ${{ steps.commit.outputs.committed }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          path: artifacts
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
-      - name: Collect binaries
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: _artifacts/
+
+      - name: Organize into lib/
         run: |
-          mkdir -p release
-          find artifacts/ -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) \
-            -exec cp {} release/ \;
-          ls -lah release/
+          mkdir -p lib/{windows-x64,linux-x64,linux-arm64,macos-x64,macos-arm64}
+          cp _artifacts/native-windows-x64/overdrive.dll       lib/windows-x64/overdrive.dll
+          cp _artifacts/native-linux-x64/liboverdrive.so       lib/linux-x64/liboverdrive.so
+          cp _artifacts/native-linux-arm64/liboverdrive.so     lib/linux-arm64/liboverdrive.so
+          cp _artifacts/native-macos-x64/liboverdrive.dylib    lib/macos-x64/liboverdrive.dylib
+          cp _artifacts/native-macos-arm64/liboverdrive.dylib  lib/macos-arm64/liboverdrive.dylib
+          echo "=== lib/ sizes ==="
+          du -sh lib/*/*
 
-      - name: Generate checksums
+      - name: Generate CHECKSUMS.md
         run: |
-          cd release
-          sha256sum * > checksums-sha256.txt
-          cat checksums-sha256.txt
+          cd lib
+          {
+            echo "# Native Library Checksums — OverDrive-DB v${SDK_VERSION}"
+            echo ""
+            echo "**Built:** $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo "**Commit:** ${{ github.sha }}"
+            echo "**Algorithm:** SHA-256"
+            echo ""
+            echo "| Platform | File | SHA-256 | Size |"
+            echo "|---|---|---|---|"
+            for f in windows-x64/overdrive.dll linux-x64/liboverdrive.so \
+                     linux-arm64/liboverdrive.so macos-x64/liboverdrive.dylib \
+                     macos-arm64/liboverdrive.dylib; do
+              [ -f "$f" ] || continue
+              hash=$(sha256sum "$f" | cut -d' ' -f1)
+              size=$(du -sh "$f" | cut -f1)
+              echo "| ${f%/*} | $(basename $f) | \`${hash:0:16}...\` | $size |"
+            done
+          } > CHECKSUMS.md
+          cat CHECKSUMS.md
 
-      - name: Create Release
+      - name: Commit & push
+        id: commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add lib/ CHECKSUMS.md 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "✅ No lib changes — skipping commit"
+            echo "committed=false" >> $GITHUB_OUTPUT
+          else
+            git commit -m "ci: native libs v${SDK_VERSION} — all 5 platforms [skip ci]
+
+          windows-x64 | linux-x64 | linux-arm64 | macos-x64 | macos-arm64
+          Trigger: ${{ github.event_name }} | Run: ${{ github.run_number }}"
+            git push origin HEAD
+            echo "committed=true" >> $GITHUB_OUTPUT
+          fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GITHUB RELEASE — Only on tag push (v*.*.*) or manual with create_release=true
+# ══════════════════════════════════════════════════════════════════════════════
+
+  github-release:
+    name: "🚀 GitHub Release"
+    needs: [build-windows-x64, build-linux-x64, build-linux-arm64, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=v${{ github.event.inputs.version || env.SDK_VERSION }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: _artifacts/
+
+      - name: Prepare versioned release assets + SHA256SUMS
+        run: |
+          TAG=${{ steps.tag.outputs.tag }}
+          mkdir -p release-assets
+
+          cp _artifacts/native-windows-x64/overdrive.dll         release-assets/overdrive_db-${TAG}-windows-x64.dll
+          cp _artifacts/native-linux-x64/liboverdrive.so         release-assets/liboverdrive_db-${TAG}-linux-x64.so
+          cp _artifacts/native-linux-arm64/liboverdrive.so       release-assets/liboverdrive_db-${TAG}-linux-arm64.so
+          cp _artifacts/native-macos-x64/liboverdrive.dylib      release-assets/liboverdrive_db-${TAG}-macos-x64.dylib
+          cp _artifacts/native-macos-arm64/liboverdrive.dylib    release-assets/liboverdrive_db-${TAG}-macos-arm64.dylib
+
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -lh
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release/overdrive.dll
-            release/liboverdrive.so
-            release/liboverdrive-arm64.so
-            release/liboverdrive.dylib
-            release/liboverdrive-arm64.dylib
-            release/checksums-sha256.txt
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "OverDrive-DB ${{ steps.tag.outputs.tag }}"
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, '-rc') || contains(steps.tag.outputs.tag, '-beta') || contains(steps.tag.outputs.tag, '-alpha') }}
           fail_on_unmatched_files: false
+          files: |
+            release-assets/overdrive_db-${{ steps.tag.outputs.tag }}-windows-x64.dll
+            release-assets/liboverdrive_db-${{ steps.tag.outputs.tag }}-linux-x64.so
+            release-assets/liboverdrive_db-${{ steps.tag.outputs.tag }}-linux-arm64.so
+            release-assets/liboverdrive_db-${{ steps.tag.outputs.tag }}-macos-x64.dylib
+            release-assets/liboverdrive_db-${{ steps.tag.outputs.tag }}-macos-arm64.dylib
+            release-assets/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Step Summary
+        run: |
+          TAG=${{ steps.tag.outputs.tag }}
+          echo "## 🚀 OverDrive-DB ${TAG} Released" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Asset | Platform |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| \`overdrive_db-${TAG}-windows-x64.dll\` | 🪟 Windows x64 |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`liboverdrive_db-${TAG}-linux-x64.so\` | 🐧 Linux x64 |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`liboverdrive_db-${TAG}-linux-arm64.so\` | 🐧 Linux ARM64 |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`liboverdrive_db-${TAG}-macos-x64.dylib\` | 🍎 macOS x64 |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`liboverdrive_db-${TAG}-macos-arm64.dylib\` | 🍎 macOS ARM64 |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`SHA256SUMS.txt\` | All platforms |" >> $GITHUB_STEP_SUMMARY
