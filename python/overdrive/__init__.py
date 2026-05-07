@@ -178,7 +178,85 @@ class OverdriveDb:
             raise RuntimeError(f"[overdrive] count: {_native.last_error(self._lib)}")
         return n
 
+    def get_history(self, table: str, id: str) -> List[Dict[str, Any]]:
+        """Return the WAL change history for a document since the last sync/close.
+
+        Each entry: {"lsn": int, "op": "INSERT"|"UPDATE"|"DELETE",
+                     "data": dict|None, "prev_data": dict|None}
+
+        Example::
+
+            odb.insert("users", {"name": "Alice", "age": 25})   # id = "users_1"
+            odb.update("users", "users_1", {"age": 26})
+            history = odb.get_history("users", "users_1")
+            # [{"lsn":1,"op":"INSERT","data":{...},"prev_data":None},
+            #  {"lsn":2,"op":"UPDATE","data":{...},"prev_data":{...}}]
+        """
+        ptr = self._lib.overdrive_get_history(
+            self._handle, _native.encode(table), _native.encode(id)
+        )
+        if not ptr:
+            return []
+        s = _native.read_free(self._lib, ptr)
+        return json.loads(s) if s else []
+
+    def query_safe(self, sql: str, params: list = None) -> List[Dict[str, Any]]:
+        """Parameterised SQL query — prevents SQL injection.
+
+        Placeholders are ``?1``, ``?2``, … in order matching the ``params`` list.
+
+        Example::
+
+            results = odb.query_safe(
+                "SELECT * FROM users WHERE age > ?1 AND name = ?2",
+                [25, "Alice"]
+            )
+        """
+        params_json = json.dumps(params or [])
+        ptr = self._lib.overdrive_query_safe(
+            self._handle, _native.encode(sql), _native.encode(params_json)
+        )
+        if not ptr:
+            raise RuntimeError(f"[overdrive] query_safe: {_native.last_error(self._lib)}")
+        s = _native.read_free(self._lib, ptr)
+        res = json.loads(s) if s else {}
+        return res.get('rows', [res] if res else [])
+
+    def backup(self, dest_path: str) -> int:
+        """Flush all pending writes and copy the database file to ``dest_path``.
+
+        Returns the number of bytes copied.  The destination is created
+        (including parent directories) if it does not exist.  On Linux/macOS
+        the backup is hardened to ``chmod 600``.
+
+        Example::
+
+            bytes_copied = odb.backup("backups/myapp.odb")
+        """
+        ptr = self._lib.overdrive_backup(self._handle, _native.encode(dest_path))
+        if not ptr:
+            raise RuntimeError(f"[overdrive] backup: {_native.last_error(self._lib)}")
+        s = _native.read_free(self._lib, ptr)
+        res = json.loads(s) if s else {}
+        return res.get('bytes', 0)
+
+    def cleanup_wal(self) -> None:
+        """Truncate the WAL file, removing the crash-replay surface.
+
+        Safe to call any time — only removes recovery data, not committed data.
+        For guaranteed durability call ``sync()`` first.
+
+        Example::
+
+            odb.sync()        # flush everything to BTree
+            odb.cleanup_wal() # then wipe the WAL
+        """
+        rc = self._lib.overdrive_cleanup_wal(self._handle)
+        if rc < 0:
+            raise RuntimeError(f"[overdrive] cleanup_wal: {_native.last_error(self._lib)}")
+
     # ── Query ─────────────────────────────────────────────────────────────
+
 
     def query(self, sql: str) -> List[Dict[str, Any]]:
         """Execute a SQL query. Returns a list of row dicts."""

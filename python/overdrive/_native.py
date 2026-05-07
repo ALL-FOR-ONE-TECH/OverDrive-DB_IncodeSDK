@@ -62,6 +62,7 @@ def _setup_signatures(lib):
     lib.overdrive_version.restype       = S;  lib.overdrive_version.argtypes       = []
     lib.overdrive_free_string.restype   = None; lib.overdrive_free_string.argtypes   = [ctypes.c_void_p]
     lib.overdrive_last_error.restype    = S;  lib.overdrive_last_error.argtypes    = []
+    lib.overdrive_last_error_ex.restype = S;  lib.overdrive_last_error_ex.argtypes = [H]
     lib.overdrive_create_table.restype  = I;  lib.overdrive_create_table.argtypes  = [H, S]
     lib.overdrive_drop_table.restype    = I;  lib.overdrive_drop_table.argtypes    = [H, S]
     lib.overdrive_list_tables.restype   = ctypes.c_void_p; lib.overdrive_list_tables.argtypes = [H]
@@ -71,6 +72,10 @@ def _setup_signatures(lib):
     lib.overdrive_update.restype        = I;  lib.overdrive_update.argtypes        = [H, S, S, S]
     lib.overdrive_delete.restype        = I;  lib.overdrive_delete.argtypes        = [H, S, S]
     lib.overdrive_count.restype         = I;  lib.overdrive_count.argtypes         = [H, S]
+    lib.overdrive_get_history.restype   = ctypes.c_void_p; lib.overdrive_get_history.argtypes = [H, S, S]
+    lib.overdrive_query_safe.restype    = ctypes.c_void_p; lib.overdrive_query_safe.argtypes  = [H, S, S]
+    lib.overdrive_backup.restype        = ctypes.c_void_p; lib.overdrive_backup.argtypes       = [H, S]
+    lib.overdrive_cleanup_wal.restype   = I;               lib.overdrive_cleanup_wal.argtypes  = [H]
     lib.overdrive_query.restype         = ctypes.c_void_p; lib.overdrive_query.argtypes  = [H, S]
     lib.overdrive_search.restype        = ctypes.c_void_p; lib.overdrive_search.argtypes = [H, S, S]
     lib.overdrive_begin_transaction.restype  = U64; lib.overdrive_begin_transaction.argtypes  = [H, I]
@@ -93,3 +98,13 @@ def read_free(lib, ptr: int) -> str:
 def last_error(lib) -> str:
     e = lib.overdrive_last_error()
     return e.decode('utf-8') if e else ''
+
+def last_error_ex(lib, handle) -> str:
+    """Thread-safe error reader — reads from the per-handle error field.
+    Use this in multithreaded environments instead of last_error()."""
+    if not handle:
+        return last_error(lib)
+    e = lib.overdrive_last_error_ex(handle)
+    if e:
+        return e.decode('utf-8')
+    return last_error(lib)  # fall back to thread-local
