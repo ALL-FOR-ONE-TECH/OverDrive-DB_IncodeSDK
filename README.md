@@ -8,8 +8,8 @@
     <a href="https://crates.io/crates/overdrive-db"><img src="https://img.shields.io/crates/v/overdrive-db?style=flat-square&color=orange&logo=rust" alt="crates.io"/></a>
     <a href="https://pypi.org/project/overdrive-db/"><img src="https://img.shields.io/pypi/v/overdrive-db?style=flat-square&color=3776ab&logo=python" alt="PyPI"/></a>
     <a href="https://www.npmjs.com/package/overdrive-db"><img src="https://img.shields.io/npm/v/overdrive-db?style=flat-square&color=cb3837&logo=npm" alt="npm"/></a>
-    <a href="https://github.com/karthikeyanV2K/OverDrive-DB_IncodeSDK/releases"><img src="https://img.shields.io/github/v/release/karthikeyanV2K/OverDrive-DB_IncodeSDK?style=flat-square&label=release" alt="release"/></a>
-    <a href="https://github.com/karthikeyanV2K/OverDrive-DB_IncodeSDK/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-green?style=flat-square" alt="license"/></a>
+    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases"><img src="https://img.shields.io/github/v/release/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK?style=flat-square&label=release" alt="release"/></a>
+    <a href="https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-green?style=flat-square" alt="license"/></a>
   </p>
 </p>
 
@@ -21,7 +21,7 @@
 pip install overdrive-db                # Python
 npm install overdrive-db                # Node.js
 cargo add overdrive-db                  # Rust (native crate)
-go get github.com/karthikeyanV2K/OverDrive-DB_IncodeSDK/go@v2.3.0  # Go
+go get github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/go@v2.3.0  # Go
 ```
 
 **Java (Maven):**
@@ -33,7 +33,7 @@ go get github.com/karthikeyanV2K/OverDrive-DB_IncodeSDK/go@v2.3.0  # Go
 </dependency>
 ```
 
-**C/C++:** Download `overdrive.h` + native library from [GitHub Releases](https://github.com/karthikeyanV2K/OverDrive-DB_IncodeSDK/releases/latest).
+**C/C++:** Download `overdrive.h` + native library from [GitHub Releases](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases/latest).
 
 ---
 
@@ -394,7 +394,7 @@ Do **not** free: `overdrive_last_error()`, `overdrive_version()` (static pointer
 | macOS x64 | `liboverdrive.dylib` | ~3.8 MB |
 | macOS ARM64 | `liboverdrive-arm64.dylib` | ~3.6 MB |
 
-Download from [GitHub Releases](https://github.com/karthikeyanV2K/OverDrive-DB_IncodeSDK/releases/latest).
+Download from [GitHub Releases](https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases/latest).
 
 > Python and Rust auto-download the native library on first use. Node.js downloads on `npm install`. Java and Go require manual placement in `lib/`.
 
@@ -404,12 +404,12 @@ Download from [GitHub Releases](https://github.com/karthikeyanV2K/OverDrive-DB_I
 
 | Resource | URL |
 |----------|-----|
-| GitHub | https://github.com/karthikeyanV2K/OverDrive-DB_IncodeSDK |
-| Releases | https://github.com/karthikeyanV2K/OverDrive-DB_IncodeSDK/releases |
+| GitHub | https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK |
+| Releases | https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases |
 | crates.io | https://crates.io/crates/overdrive-db |
 | PyPI | https://pypi.org/project/overdrive-db/ |
 | npm | https://www.npmjs.com/package/overdrive-db |
-| Issues | https://github.com/karthikeyanV2K/OverDrive-DB_IncodeSDK/issues |
+| Issues | https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/issues |
 
 ## License
 
@@ -418,5 +418,5 @@ Licensed under either **MIT** or **Apache-2.0**, at your option.
 ---
 
 <p align="center">
-  Built by <a href="https://github.com/karthikeyanV2K"><strong>karthikeyanV2K</strong></a> · <a href="https://overdrive-db.com">overdrive-db.com</a>
+  Built by <a href="https://github.com/ALL-FOR-ONE-TECH"><strong>ALL FOR ONE TECH</strong></a> · <a href="https://overdrive-db.com">overdrive-db.com</a>
 </p>

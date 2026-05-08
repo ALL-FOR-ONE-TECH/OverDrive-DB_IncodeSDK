@@ -29,9 +29,9 @@ requires-python = ">=3.8"
 
 [project.urls]
 Homepage = "https://overdrive-db.com"
-Repository = "https://github.com/karthikeyanV2K/OverDrive-DB"
-Changelog = "https://github.com/karthikeyanV2K/OverDrive-DB/releases"
-"Bug Tracker" = "https://github.com/karthikeyanV2K/OverDrive-DB/issues"
+Repository = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
+Changelog = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/releases"
+"Bug Tracker" = "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["overdrive"]

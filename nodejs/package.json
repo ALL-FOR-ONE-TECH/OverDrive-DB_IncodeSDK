@@ -28,11 +28,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/karthikeyanV2K/OverDrive-DB"
+    "url": "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK"
   },
   "homepage": "https://overdrive-db.com",
   "bugs": {
-    "url": "https://github.com/karthikeyanV2K/OverDrive-DB/issues"
+    "url": "https://github.com/ALL-FOR-ONE-TECH/OverDrive-DB_IncodeSDK/issues"
   },
   "engines": {
     "node": ">=16.0.0"
