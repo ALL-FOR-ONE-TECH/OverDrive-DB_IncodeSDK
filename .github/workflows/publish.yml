@@ -29,7 +29,7 @@ on:
         default: "all"
 
 env:
-  SDK_VERSION: "2.3.0"
+  SDK_VERSION: "2.3.1"
 
 permissions:
   contents: read
@@ -89,6 +89,9 @@ jobs:
         working-directory: nodejs
         run: npm install --ignore-scripts
 
+      - name: Bundle native libraries
+        run: cp -r lib nodejs/lib
+
       - name: Publish
         working-directory: nodejs
         run: npm publish --access public
@@ -125,6 +128,9 @@ jobs:
           VER=${{ needs.resolve-version.outputs.version }}
           sed -i "s/^version = .*/version = \"${VER}\"/" pyproject.toml
           grep "^version" pyproject.toml
+
+      - name: Bundle native libraries
+        run: cp -r lib python/overdrive/lib
 
       - name: Build wheel + sdist
         working-directory: python
