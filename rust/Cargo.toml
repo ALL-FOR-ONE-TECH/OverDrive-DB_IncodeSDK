@@ -1,6 +1,6 @@
 [package]
 name        = "overdrive-db"
-version     = "2.3.3"
+version     = "2.3.4"
 edition     = "2021"
 authors     = ["AFOT <admin@afot.in>"]
 description = "OverDrive-DB embedded SDK — ACID transactions, AES-256 encryption, WAL durability, 6 storage engines. The SQLite alternative built in Rust."
