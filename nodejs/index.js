@@ -97,9 +97,38 @@ function _err(h, op) {
     const msg = h ? ffi().last_error_ex(h) : ffi().last_error();
     return new Error(`[overdrive-db] ${op} failed: ${msg || 'unknown error'}`);
 }
-function _parsePtr(ptr, op, handle) {
+
+/**
+ * SECURITY: prototype-pollution-safe JSON parse.
+ * Rejects payloads that set __proto__, constructor, or prototype keys.
+ */
+function _safeJson(str) {
+    if (!str) return null;
+    const obj = JSON.parse(str);
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+        if ('__proto__' in obj || 'constructor' in obj || 'prototype' in obj)
+            throw new Error('[overdrive-db] Rejected: dangerous prototype key in response');
+    }
+    return obj;
+}
+
+/**
+ * MEMORY: read a Rust-heap char* pointer into a JS string then free it.
+ * Koffi copies the bytes to JS but does NOT free the native pointer.
+ * Every non-const char* returned by the DLL must be freed here.
+ */
+function _readAndFree(ptr, op, handle) {
     if (!ptr) throw _err(handle, op);
-    try { return JSON.parse(ptr); } catch { return ptr; }
+    // koffi has already materialised ptr as a JS string at this point;
+    // call free_string so Rust's allocator reclaims the memory.
+    try { ffi().free_string(ptr); } catch (_) { /* best effort */ }
+    return ptr;  // the JS string copy is still valid after free
+}
+
+function _readAndFreeNullable(ptr) {
+    if (!ptr) return null;
+    try { ffi().free_string(ptr); } catch (_) { /* best effort */ }
+    return ptr;
 }
 
 // ── Isolation levels ─────────────────────────────────────────────────────────
@@ -113,7 +142,15 @@ const IsolationLevel = {
 // ── Main class ───────────────────────────────────────────────────────────────
 class OverdriveDb {
 
-    constructor(handle) { this._handle = handle; }
+    constructor(handle) {
+        this._handle = handle;
+        this._closed = false;
+    }
+
+    _assertOpen() {
+        if (this._closed || !this._handle)
+            throw new Error('[overdrive-db] Database handle is already closed');
+    }
 
     // ── Static ───────────────────────────────────────────────────────────────
 
@@ -137,77 +174,100 @@ class OverdriveDb {
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    close() { if (this._handle) { ffi().close(this._handle); this._handle = null; } }
-    sync()  { ffi().sync(this._handle); }
-    getEngineType() { return ffi().get_engine_type(this._handle) || 'Disk'; }
-    memoryUsage() { return _parsePtr(ffi().memory_usage(this._handle), 'memoryUsage', this._handle); }
-    setAutoCreateTables(enabled) { ffi().set_auto_create(this._handle, enabled ? 1 : 0); }
+    close() {
+        if (this._handle && !this._closed) {
+            ffi().close(this._handle);
+            this._handle = null;
+            this._closed = true;
+        }
+    }
+    sync()  { this._assertOpen(); ffi().sync(this._handle); }
+    getEngineType() {
+        this._assertOpen();
+        return _readAndFreeNullable(ffi().get_engine_type(this._handle)) || 'Disk';
+    }
+    memoryUsage() {
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().memory_usage(this._handle));
+        return s ? JSON.parse(s) : {};
+    }
+    setAutoCreateTables(enabled) { this._assertOpen(); ffi().set_auto_create(this._handle, enabled ? 1 : 0); }
 
     // ── Tables ────────────────────────────────────────────────────────────────
 
     createTable(name) {
+        this._assertOpen();
         if (ffi().create_table(this._handle, name) !== 0) throw _err(this._handle, 'createTable');
     }
     dropTable(name) {
+        this._assertOpen();
         if (ffi().drop_table(this._handle, name) !== 0) throw _err(this._handle, 'dropTable');
     }
     listTables() {
-        const s = ffi().list_tables(this._handle);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().list_tables(this._handle));
         return s ? JSON.parse(s) : [];
     }
-    tableExists(name) { return ffi().table_exists(this._handle, name) === 1; }
+    tableExists(name) { this._assertOpen(); return ffi().table_exists(this._handle, name) === 1; }
 
     // ── CRUD ──────────────────────────────────────────────────────────────────
 
     insert(table, doc) {
-        const id = ffi().insert(this._handle, table, JSON.stringify(doc));
-        if (!id) throw _err(this._handle, 'insert');
+        this._assertOpen();
+        const id = _readAndFree(ffi().insert(this._handle, table, JSON.stringify(doc)), 'insert', this._handle);
         return id;
     }
     insertMany(table, docs) { return docs.map(d => this.insert(table, d)); }
 
     get(table, id) {
-        const s = ffi().get(this._handle, table, id);
-        return s ? JSON.parse(s) : null;
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().get(this._handle, table, id));
+        return s ? _safeJson(s) : null;
     }
     update(table, id, patch) {
+        this._assertOpen();
         const r = ffi().update(this._handle, table, id, JSON.stringify(patch));
         if (r === -1) throw _err(this._handle, 'update');
         return r === 1;
     }
     delete(table, id) {
+        this._assertOpen();
         const r = ffi().delete(this._handle, table, id);
         if (r === -1) throw _err(this._handle, 'delete');
         return r === 1;
     }
     count(table) {
+        this._assertOpen();
         const n = ffi().count(this._handle, table);
         if (n < 0) throw _err(this._handle, 'count');
         return n;
     }
     getHistory(table, id) {
-        return _parsePtr(ffi().get_history(this._handle, table, id), 'getHistory', this._handle);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().get_history(this._handle, table, id));
+        return s ? JSON.parse(s) : [];
     }
 
     // ── Query / Search ────────────────────────────────────────────────────────
 
     query(sql) {
-        const s = ffi().query(this._handle, sql);
-        if (!s) throw _err(this._handle, 'query');
+        this._assertOpen();
+        const s = _readAndFree(ffi().query(this._handle, sql), 'query', this._handle);
         const res = JSON.parse(s);
         if (res.rows !== undefined) return res.rows;
         if (res.result !== undefined) return [{ result: res.result }];
         return Array.isArray(res) ? res : [res];
     }
     querySafe(sql, params = []) {
-        const s = ffi().query_safe(this._handle, sql, JSON.stringify(params));
-        if (!s) throw _err(this._handle, 'querySafe');
+        this._assertOpen();
+        const s = _readAndFree(ffi().query_safe(this._handle, sql, JSON.stringify(params)), 'querySafe', this._handle);
         const res = JSON.parse(s);
         if (res.rows !== undefined) return res.rows;
         return Array.isArray(res) ? res : [res];
     }
     search(table, text) {
-        const s = ffi().search(this._handle, table, text);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().search(this._handle, table, text));
         return s ? JSON.parse(s) : [];
     }
 
