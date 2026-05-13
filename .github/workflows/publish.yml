@@ -29,7 +29,7 @@ on:
         default: "all"
 
 env:
-  SDK_VERSION: "2.3.2"
+  SDK_VERSION: "2.3.3"
 
 permissions:
   contents: read
