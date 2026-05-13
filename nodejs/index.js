@@ -65,20 +65,20 @@ function ffi() {
         drop_timeseries:    lib.func('int overdrive_drop_timeseries(void *handle, const char *name)'),
         list_timeseries:    lib.func('char * overdrive_list_timeseries(void *handle)'),
         // Vector engine
-        create_vector_index: lib.func('int overdrive_create_vector_index(void *handle, const char *name, int dims)'),
-        insert_vector:      lib.func('int overdrive_insert_vector(void *handle, const char *index, const char *id, const char *vec_json, const char *meta_json)'),
-        vector_search:      lib.func('char * overdrive_vector_search(void *handle, const char *index, const char *vec_json, int top_k)'),
-        drop_vector_index:  lib.func('int overdrive_drop_vector_index(void *handle, const char *name)'),
+        create_vector_index: lib.func('int overdrive_create_vector_index(void *handle, const char *table, const char *field, uint32_t dimensions, const char *metric)'),
+        insert_vector:       lib.func('char * overdrive_insert_vector(void *handle, const char *table, const char *json_doc, const char *embedding_json)'),
+        vector_search:       lib.func('char * overdrive_vector_search(void *handle, const char *table, const char *query_vec_json, uint32_t limit, const char *metric)'),
+        drop_vector_index:   lib.func('int overdrive_drop_vector_index(void *handle, const char *table)'),
         list_vector_indexes: lib.func('char * overdrive_list_vector_indexes(void *handle)'),
         // Graph engine
-        create_node_type:   lib.func('int overdrive_create_node_type(void *handle, const char *type_name, const char *schema)'),
-        create_edge_type:   lib.func('int overdrive_create_edge_type(void *handle, const char *type_name, const char *schema)'),
-        create_node:        lib.func('char * overdrive_create_node(void *handle, const char *type_name, const char *props)'),
-        create_edge:        lib.func('int overdrive_create_edge(void *handle, const char *type_name, const char *from_id, const char *to_id, const char *props)'),
-        graph_traverse:     lib.func('char * overdrive_graph_traverse(void *handle, const char *start_id, const char *direction, int max_depth)'),
-        shortest_path:      lib.func('char * overdrive_shortest_path(void *handle, const char *from_id, const char *to_id)'),
-        delete_node:        lib.func('int overdrive_delete_node(void *handle, const char *node_id)'),
-        list_nodes:         lib.func('char * overdrive_list_nodes(void *handle, const char *type_name)'),
+        create_node_type:    lib.func('int overdrive_create_node_type(void *handle, const char *type_name)'),
+        create_edge_type:    lib.func('int overdrive_create_edge_type(void *handle, const char *type_name)'),
+        create_node:         lib.func('char * overdrive_create_node(void *handle, const char *type_name, const char *props_json)'),
+        create_edge:         lib.func('int overdrive_create_edge(void *handle, const char *edge_type, const char *from_id, const char *to_id, const char *props_json)'),
+        graph_traverse:      lib.func('char * overdrive_graph_traverse(void *handle, const char *start_id, const char *direction, int max_depth)'),
+        shortest_path:       lib.func('char * overdrive_shortest_path(void *handle, const char *from_id, const char *to_id)'),
+        delete_node:         lib.func('int overdrive_delete_node(void *handle, const char *node_id)'),
+        list_nodes:          lib.func('char * overdrive_list_nodes(void *handle, const char *type_name)'),
         // Streaming engine
         create_topic:       lib.func('int overdrive_create_topic(void *handle, const char *topic, const char *opts)'),
         publish:            lib.func('int overdrive_publish(void *handle, const char *topic, const char *message)'),
@@ -302,36 +302,46 @@ class OverdriveDb {
     // ══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Create a vector index.
-     * @param {string} name
-     * @param {number} dims - Embedding dimensions (e.g. 1536 for OpenAI)
+     * Create a vector index (collection).
+     * @param {string} name       - Index / collection name
+     * @param {number} dims       - Embedding dimensions (e.g. 1536 for OpenAI ada-002)
+     * @param {string} [metric]   - 'cosine' (default) | 'euclidean' | 'dot'
+     * @param {string} [field]    - Reserved field name (pass '' for default)
      */
-    createVectorIndex(name, dims) {
-        const r = ffi().create_vector_index(this._handle, name, dims);
+    createVectorIndex(name, dims, metric = 'cosine', field = '') {
+        const r = ffi().create_vector_index(this._handle, name, field, dims, metric);
         if (r !== 0) throw _err(this._handle, 'createVectorIndex');
     }
 
     /**
      * Insert a vector embedding.
-     * @param {string} index  - Index name
-     * @param {string} id     - Unique document id
-     * @param {number[]} vec  - Embedding array
-     * @param {object} [meta] - Optional metadata stored alongside the vector
+     * @param {string}   collection  - Collection / index name
+     * @param {number[]} vec         - Embedding array e.g. [0.1, 0.2, ...]
+     * @param {object}   [meta]      - Metadata stored alongside the vector.
+     *                                 Include `_id` to use a specific id.
+     * @returns {string} The generated or provided document id.
      */
-    insertVector(index, id, vec, meta = {}) {
-        const r = ffi().insert_vector(this._handle, index, id, JSON.stringify(vec), JSON.stringify(meta));
-        if (r !== 0) throw _err(this._handle, 'insertVector');
+    insertVector(collection, vec, meta = {}) {
+        const id = ffi().insert_vector(
+            this._handle,
+            collection,
+            JSON.stringify(meta),
+            JSON.stringify(vec)
+        );
+        if (!id) throw _err(this._handle, 'insertVector');
+        return id;
     }
 
     /**
      * Find the top-k nearest neighbours.
-     * @param {string}   index - Index name
-     * @param {number[]} vec   - Query embedding
-     * @param {number}   topK  - Number of results (default 10)
-     * @returns {{ id, score, meta }[]}
+     * @param {string}   collection  - Collection name
+     * @param {number[]} vec         - Query embedding
+     * @param {number}   [topK=10]   - Number of results
+     * @param {string}   [metric]    - 'cosine' (default) | 'euclidean' | 'dot'
+     * @returns {{ id, score, metadata }[]}
      */
-    vectorSearch(index, vec, topK = 10) {
-        const s = ffi().vector_search(this._handle, index, JSON.stringify(vec), topK);
+    vectorSearch(collection, vec, topK = 10, metric = 'cosine') {
+        const s = ffi().vector_search(this._handle, collection, JSON.stringify(vec), topK, metric);
         return s ? JSON.parse(s) : [];
     }
 
@@ -348,29 +358,27 @@ class OverdriveDb {
     // ══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Define a node type (schema).
-     * @param {string} typeName
-     * @param {object} schema - { fields: ['name', 'age', ...] }
+     * Define a node type. No schema needed — OverDrive-DB is schemaless.
+     * @param {string} typeName  e.g. 'Person', 'Product'
      */
-    createNodeType(typeName, schema = {}) {
-        const r = ffi().create_node_type(this._handle, typeName, JSON.stringify(schema));
+    createNodeType(typeName) {
+        const r = ffi().create_node_type(this._handle, typeName);
         if (r !== 0) throw _err(this._handle, 'createNodeType');
     }
 
     /**
-     * Define an edge type (relationship schema).
-     * @param {string} typeName
-     * @param {object} schema
+     * Define an edge type (relationship).
+     * @param {string} typeName  e.g. 'KNOWS', 'BOUGHT'
      */
-    createEdgeType(typeName, schema = {}) {
-        const r = ffi().create_edge_type(this._handle, typeName, JSON.stringify(schema));
+    createEdgeType(typeName) {
+        const r = ffi().create_edge_type(this._handle, typeName);
         if (r !== 0) throw _err(this._handle, 'createEdgeType');
     }
 
     /**
      * Create a graph node. Returns the new node id.
      * @param {string} typeName
-     * @param {object} props
+     * @param {object} [props]
      * @returns {string}
      */
     createNode(typeName, props = {}) {
@@ -381,9 +389,9 @@ class OverdriveDb {
 
     /**
      * Create a directed edge between two nodes.
-     * @param {string} typeName
-     * @param {string} fromId
-     * @param {string} toId
+     * @param {string} typeName  - Edge type e.g. 'KNOWS'
+     * @param {string} fromId    - Source node id
+     * @param {string} toId      - Target node id
      * @param {object} [props]
      */
     createEdge(typeName, fromId, toId, props = {}) {
