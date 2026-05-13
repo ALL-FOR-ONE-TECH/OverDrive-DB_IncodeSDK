@@ -57,44 +57,48 @@ function ffi() {
         create_ram_table:   lib.func('int overdrive_create_ram_table(void *handle, const char *name, const char *schema)'),
         snapshot:           lib.func('int overdrive_snapshot(void *handle, const char *dest)'),
         restore:            lib.func('int overdrive_restore(void *handle, const char *src)'),
-        // Time-Series engine
-        create_timeseries:  lib.func('int overdrive_create_timeseries(void *handle, const char *name, const char *opts)'),
-        insert_measurement: lib.func('int overdrive_insert_measurement(void *handle, const char *series, const char *json)'),
-        query_timeseries:   lib.func('char * overdrive_query_timeseries(void *handle, const char *series, const char *from, const char *to, int limit)'),
-        aggregate_timeseries: lib.func('char * overdrive_aggregate_timeseries(void *handle, const char *series, const char *func, const char *from, const char *to)'),
-        drop_timeseries:    lib.func('int overdrive_drop_timeseries(void *handle, const char *name)'),
-        list_timeseries:    lib.func('char * overdrive_list_timeseries(void *handle)'),
-        // Vector engine
-        create_vector_index: lib.func('int overdrive_create_vector_index(void *handle, const char *table, const char *field, uint32_t dimensions, const char *metric)'),
-        insert_vector:       lib.func('char * overdrive_insert_vector(void *handle, const char *table, const char *json_doc, const char *embedding_json)'),
-        vector_search:       lib.func('char * overdrive_vector_search(void *handle, const char *table, const char *query_vec_json, uint32_t limit, const char *metric)'),
-        drop_vector_index:   lib.func('int overdrive_drop_vector_index(void *handle, const char *table)'),
-        list_vector_indexes: lib.func('char * overdrive_list_vector_indexes(void *handle)'),
-        // Graph engine
-        create_node_type:    lib.func('int overdrive_create_node_type(void *handle, const char *type_name)'),
-        create_edge_type:    lib.func('int overdrive_create_edge_type(void *handle, const char *type_name)'),
-        create_node:         lib.func('char * overdrive_create_node(void *handle, const char *type_name, const char *props_json)'),
-        create_edge:         lib.func('int overdrive_create_edge(void *handle, const char *edge_type, const char *from_id, const char *to_id, const char *props_json)'),
-        graph_traverse:      lib.func('char * overdrive_graph_traverse(void *handle, const char *start_id, const char *direction, int max_depth)'),
-        shortest_path:       lib.func('char * overdrive_shortest_path(void *handle, const char *from_id, const char *to_id)'),
-        delete_node:         lib.func('int overdrive_delete_node(void *handle, const char *node_id)'),
-        list_nodes:          lib.func('char * overdrive_list_nodes(void *handle, const char *type_name)'),
-        // Streaming engine
-        create_topic:       lib.func('int overdrive_create_topic(void *handle, const char *topic, const char *opts)'),
-        publish:            lib.func('int overdrive_publish(void *handle, const char *topic, const char *message)'),
-        subscribe:          lib.func('uint64_t overdrive_subscribe(void *handle, const char *topic, const char *group)'),
-        poll:               lib.func('char * overdrive_poll(void *handle, uint64_t sub_id, int max_msgs)'),
-        commit_offset:      lib.func('int overdrive_commit_offset(void *handle, uint64_t sub_id, uint64_t offset)'),
-        unsubscribe:        lib.func('int overdrive_unsubscribe(void *handle, uint64_t sub_id)'),
-        drop_topic:         lib.func('int overdrive_drop_topic(void *handle, const char *topic)'),
-        list_topics:        lib.func('char * overdrive_list_topics(void *handle)'),
+        // Time-Series engine — real Rust sigs
+        create_timeseries:    lib.func('int overdrive_create_timeseries(void *handle, const char *name, uint64_t ttl_seconds)'),
+        insert_measurement:   lib.func('int overdrive_insert_measurement(void *handle, const char *series, const char *measurement_json)'),
+        query_timeseries:     lib.func('char * overdrive_query_timeseries(void *handle, const char *series, int64_t start_ts, int64_t end_ts)'),
+        aggregate_timeseries: lib.func('char * overdrive_aggregate_timeseries(void *handle, const char *series, int64_t start_ts, int64_t end_ts, int64_t window_sec, const char *aggregation)'),
+        drop_timeseries:      lib.func('int overdrive_drop_timeseries(void *handle, const char *name)'),
+        list_timeseries:      lib.func('char * overdrive_list_timeseries(void *handle)'),
+        // Vector engine — correct sigs
+        create_vector_index:  lib.func('int overdrive_create_vector_index(void *handle, const char *table, const char *field, uint32_t dimensions, const char *metric)'),
+        insert_vector:        lib.func('char * overdrive_insert_vector(void *handle, const char *table, const char *json_doc, const char *embedding_json)'),
+        vector_search:        lib.func('char * overdrive_vector_search(void *handle, const char *table, const char *query_vec_json, uint32_t limit, const char *metric)'),
+        drop_vector_index:    lib.func('int overdrive_drop_vector_index(void *handle, const char *table)'),
+        list_vector_indexes:  lib.func('char * overdrive_list_vector_indexes(void *handle)'),
+        // Graph engine — correct sigs
+        create_node_type:     lib.func('int overdrive_create_node_type(void *handle, const char *type_name)'),
+        create_edge_type:     lib.func('int overdrive_create_edge_type(void *handle, const char *type_name)'),
+        create_node:          lib.func('char * overdrive_create_node(void *handle, const char *type_name, const char *props_json)'),
+        create_edge:          lib.func('int overdrive_create_edge(void *handle, const char *edge_type, const char *from_id, const char *to_id, const char *props_json)'),
+        graph_traverse:       lib.func('char * overdrive_graph_traverse(void *handle, const char *start_id, const char *direction, int max_depth)'),
+        shortest_path:        lib.func('char * overdrive_shortest_path(void *handle, const char *from_id, const char *to_id)'),
+        delete_node:          lib.func('int overdrive_delete_node(void *handle, const char *node_id)'),
+        list_nodes:           lib.func('char * overdrive_list_nodes(void *handle, const char *type_name)'),
+        // Streaming engine — real Rust sigs
+        create_topic:         lib.func('int overdrive_create_topic(void *handle, const char *topic_name, uint32_t partitions, uint64_t retention_seconds)'),
+        publish:              lib.func('char * overdrive_publish(void *handle, const char *topic_name, const char *message_json)'),
+        subscribe:            lib.func('char * overdrive_subscribe(void *handle, const char *topic_name, const char *consumer_group, const char *offset_mode)'),
+        poll:                 lib.func('char * overdrive_poll(void *handle, uint64_t subscription_id, uint32_t max_messages, uint32_t timeout_ms)'),
+        commit_offset:        lib.func('int overdrive_commit_offset(void *handle, const char *topic_name, const char *consumer_group, uint64_t offset)'),
+        unsubscribe:          lib.func('int overdrive_unsubscribe(void *handle, uint64_t subscription_id)'),
+        drop_topic:           lib.func('int overdrive_drop_topic(void *handle, const char *topic)'),
+        list_topics:          lib.func('char * overdrive_list_topics(void *handle)'),
     };
     return _ffi;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function _err(h, op) {
-    const msg = h ? ffi().last_error_ex(h) : ffi().last_error();
+    // set_error() in Rust writes to a thread-local; last_error_ex reads the
+    // handle-local copy (which may be empty).  Fall back to thread-local so we
+    // always surface the real error message instead of "unknown error".
+    let msg = h ? ffi().last_error_ex(h) : null;
+    if (!msg) msg = ffi().last_error();
     return new Error(`[overdrive-db] ${op} failed: ${msg || 'unknown error'}`);
 }
 
@@ -291,13 +295,16 @@ class OverdriveDb {
     // ── Integrity / Backup ────────────────────────────────────────────────────
 
     verifyIntegrity() {
-        const s = ffi().verify_integrity(this._handle);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().verify_integrity(this._handle));
         return s ? JSON.parse(s) : null;
     }
     backup(destPath) {
-        return _parsePtr(ffi().backup(this._handle, destPath), 'backup', this._handle);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().backup(this._handle, destPath));
+        return s ? JSON.parse(s) : null;
     }
-    cleanupWal() { return ffi().cleanup_wal(this._handle); }
+    cleanupWal() { this._assertOpen(); return ffi().cleanup_wal(this._handle); }
 
     // ══════════════════════════════════════════════════════════════════════════
     // TIME-SERIES ENGINE
@@ -306,54 +313,61 @@ class OverdriveDb {
     /**
      * Create a time-series collection.
      * @param {string} name
-     * @param {object} [opts] - { retention_secs, granularity }
+     * @param {number} [ttlSeconds=0] - Retention window in seconds (0 = keep forever)
      */
-    createTimeseries(name, opts = {}) {
-        const r = ffi().create_timeseries(this._handle, name, JSON.stringify(opts));
+    createTimeseries(name, ttlSeconds = 0) {
+        this._assertOpen();
+        const r = ffi().create_timeseries(this._handle, name, ttlSeconds);
         if (r !== 0) throw _err(this._handle, 'createTimeseries');
     }
 
     /**
-     * Insert a measurement into a time-series.
-     * @param {string} series - Series name
-     * @param {object} data   - { timestamp?: ISO string, value, tags? }
+     * Insert a measurement. The JSON object must have at least one numeric field.
+     * Include `timestamp` (Unix seconds) or `ts` to set an explicit time.
+     * @param {string} series
+     * @param {object} data  e.g. { value: 42.5, sensor: 'A', timestamp: 1700000000 }
      */
     insertMeasurement(series, data) {
-        const payload = { timestamp: new Date().toISOString(), ...data };
-        const r = ffi().insert_measurement(this._handle, series, JSON.stringify(payload));
+        this._assertOpen();
+        const r = ffi().insert_measurement(this._handle, series, JSON.stringify(data));
         if (r !== 0) throw _err(this._handle, 'insertMeasurement');
     }
 
     /**
-     * Query a time-series range.
+     * Query raw measurements in a Unix-second time range.
      * @param {string} series
-     * @param {string} from  - ISO timestamp or null
-     * @param {string} to    - ISO timestamp or null
-     * @param {number} limit
+     * @param {number} startTs - Unix timestamp in seconds
+     * @param {number} endTs   - Unix timestamp in seconds
      * @returns {object[]}
      */
-    queryTimeseries(series, from = null, to = null, limit = 1000) {
-        const s = ffi().query_timeseries(this._handle, series, from || '', to || '', limit);
+    queryTimeseries(series, startTs, endTs) {
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().query_timeseries(this._handle, series, startTs, endTs));
         return s ? JSON.parse(s) : [];
     }
 
     /**
-     * Aggregate a time-series (count/sum/avg/min/max).
+     * Aggregate measurements in a time window.
      * @param {string} series
-     * @param {'count'|'sum'|'avg'|'min'|'max'} func
-     * @param {string} from
-     * @param {string} to
+     * @param {number} startTs    - Unix timestamp seconds
+     * @param {number} endTs      - Unix timestamp seconds
+     * @param {number} windowSec  - Bucket size in seconds (e.g. 60 for 1-minute buckets)
+     * @param {'avg'|'sum'|'min'|'max'|'count'} func
+     * @returns {object[]}
      */
-    aggregateTimeseries(series, func, from = null, to = null) {
-        const s = ffi().aggregate_timeseries(this._handle, series, func, from || '', to || '');
-        return s ? JSON.parse(s) : null;
+    aggregateTimeseries(series, startTs, endTs, windowSec, func = 'avg') {
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().aggregate_timeseries(this._handle, series, startTs, endTs, windowSec, func));
+        return s ? JSON.parse(s) : [];
     }
 
     dropTimeseries(name) {
+        this._assertOpen();
         if (ffi().drop_timeseries(this._handle, name) !== 0) throw _err(this._handle, 'dropTimeseries');
     }
     listTimeseries() {
-        const s = ffi().list_timeseries(this._handle);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().list_timeseries(this._handle));
         return s ? JSON.parse(s) : [];
     }
 
@@ -382,34 +396,27 @@ class OverdriveDb {
      * @returns {string} The generated or provided document id.
      */
     insertVector(collection, vec, meta = {}) {
-        const id = ffi().insert_vector(
-            this._handle,
-            collection,
-            JSON.stringify(meta),
-            JSON.stringify(vec)
+        this._assertOpen();
+        const id = _readAndFree(
+            ffi().insert_vector(this._handle, collection, JSON.stringify(meta), JSON.stringify(vec)),
+            'insertVector', this._handle
         );
-        if (!id) throw _err(this._handle, 'insertVector');
         return id;
     }
 
-    /**
-     * Find the top-k nearest neighbours.
-     * @param {string}   collection  - Collection name
-     * @param {number[]} vec         - Query embedding
-     * @param {number}   [topK=10]   - Number of results
-     * @param {string}   [metric]    - 'cosine' (default) | 'euclidean' | 'dot'
-     * @returns {{ id, score, metadata }[]}
-     */
     vectorSearch(collection, vec, topK = 10, metric = 'cosine') {
-        const s = ffi().vector_search(this._handle, collection, JSON.stringify(vec), topK, metric);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().vector_search(this._handle, collection, JSON.stringify(vec), topK, metric));
         return s ? JSON.parse(s) : [];
     }
 
     dropVectorIndex(name) {
+        this._assertOpen();
         if (ffi().drop_vector_index(this._handle, name) !== 0) throw _err(this._handle, 'dropVectorIndex');
     }
     listVectorIndexes() {
-        const s = ffi().list_vector_indexes(this._handle);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().list_vector_indexes(this._handle));
         return s ? JSON.parse(s) : [];
     }
 
@@ -442,51 +449,36 @@ class OverdriveDb {
      * @returns {string}
      */
     createNode(typeName, props = {}) {
-        const id = ffi().create_node(this._handle, typeName, JSON.stringify(props));
-        if (!id) throw _err(this._handle, 'createNode');
+        this._assertOpen();
+        const id = _readAndFree(ffi().create_node(this._handle, typeName, JSON.stringify(props)), 'createNode', this._handle);
         return id;
     }
 
-    /**
-     * Create a directed edge between two nodes.
-     * @param {string} typeName  - Edge type e.g. 'KNOWS'
-     * @param {string} fromId    - Source node id
-     * @param {string} toId      - Target node id
-     * @param {object} [props]
-     */
     createEdge(typeName, fromId, toId, props = {}) {
+        this._assertOpen();
         const r = ffi().create_edge(this._handle, typeName, fromId, toId, JSON.stringify(props));
         if (r !== 0) throw _err(this._handle, 'createEdge');
     }
 
-    /**
-     * Traverse the graph from a starting node (BFS/DFS).
-     * @param {string} startId
-     * @param {'outbound'|'inbound'|'any'} direction
-     * @param {number} maxDepth
-     * @returns {object[]}
-     */
     graphTraverse(startId, direction = 'outbound', maxDepth = 3) {
-        const s = ffi().graph_traverse(this._handle, startId, direction, maxDepth);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().graph_traverse(this._handle, startId, direction, maxDepth));
         return s ? JSON.parse(s) : [];
     }
 
-    /**
-     * Find the shortest path between two nodes.
-     * @param {string} fromId
-     * @param {string} toId
-     * @returns {string[]} Array of node ids representing the path
-     */
     shortestPath(fromId, toId) {
-        const s = ffi().shortest_path(this._handle, fromId, toId);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().shortest_path(this._handle, fromId, toId));
         return s ? JSON.parse(s) : [];
     }
 
     deleteNode(nodeId) {
+        this._assertOpen();
         if (ffi().delete_node(this._handle, nodeId) !== 0) throw _err(this._handle, 'deleteNode');
     }
-    listNodes(typeName) {
-        const s = ffi().list_nodes(this._handle, typeName);
+    listNodes(typeName = '') {
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().list_nodes(this._handle, typeName));
         return s ? JSON.parse(s) : [];
     }
 
@@ -495,64 +487,81 @@ class OverdriveDb {
     // ══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Create a streaming topic (message queue).
+     * Create a streaming topic.
      * @param {string} topic
-     * @param {object} [opts] - { partitions, retention_secs }
+     * @param {number} [partitions=1]
+     * @param {number} [retentionSeconds=0] - 0 = keep forever
      */
-    createTopic(topic, opts = {}) {
-        const r = ffi().create_topic(this._handle, topic, JSON.stringify(opts));
+    createTopic(topic, partitions = 1, retentionSeconds = 0) {
+        this._assertOpen();
+        const r = ffi().create_topic(this._handle, topic, partitions, retentionSeconds);
         if (r !== 0) throw _err(this._handle, 'createTopic');
     }
 
     /**
-     * Publish a message to a topic.
+     * Publish a message. Returns the assigned offset number.
      * @param {string} topic
-     * @param {string|object} message
+     * @param {string|object} message  - Will be JSON-stringified if object
+     * @returns {number} offset
      */
     publish(topic, message) {
+        this._assertOpen();
         const msg = typeof message === 'string' ? message : JSON.stringify(message);
-        const r = ffi().publish(this._handle, topic, msg);
-        if (r !== 0) throw _err(this._handle, 'publish');
+        const s = _readAndFree(ffi().publish(this._handle, topic, msg), 'publish', this._handle);
+        const obj = JSON.parse(s);
+        return obj.offset;
     }
 
     /**
-     * Subscribe to a topic. Returns subscription id.
+     * Subscribe to a topic. Returns subscription id (number).
      * @param {string} topic
-     * @param {string} [consumerGroup]
-     * @returns {BigInt} subscription id
+     * @param {string} [consumerGroup='']
+     * @param {'latest'|'earliest'} [offsetMode='latest']
+     * @returns {number} subscriptionId
      */
-    subscribe(topic, consumerGroup = '') {
-        const id = ffi().subscribe(this._handle, topic, consumerGroup);
-        if (!id) throw _err(this._handle, 'subscribe');
-        return id;
+    subscribe(topic, consumerGroup = '', offsetMode = 'latest') {
+        this._assertOpen();
+        const s = _readAndFree(ffi().subscribe(this._handle, topic, consumerGroup, offsetMode), 'subscribe', this._handle);
+        const obj = JSON.parse(s);
+        return obj.subscription_id;
     }
 
     /**
      * Poll messages from a subscription.
-     * @param {BigInt} subId - From subscribe()
-     * @param {number} maxMsgs
-     * @returns {object[]}
+     * @param {number} subId     - From subscribe()
+     * @param {number} [maxMsgs=100]
+     * @param {number} [timeoutMs=0]
+     * @returns {{ offset, timestamp_ms, payload }[]}
      */
-    poll(subId, maxMsgs = 100) {
-        const s = ffi().poll(this._handle, subId, maxMsgs);
+    poll(subId, maxMsgs = 100, timeoutMs = 0) {
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().poll(this._handle, subId, maxMsgs, timeoutMs));
         return s ? JSON.parse(s) : [];
     }
 
     /**
-     * Acknowledge messages up to an offset.
-     * @param {BigInt} subId
-     * @param {BigInt} offset
+     * Commit a consumer group offset for durable consumption.
+     * @param {string} topic
+     * @param {string} consumerGroup
+     * @param {number} offset
      */
-    commitOffset(subId, offset) {
-        ffi().commit_offset(this._handle, subId, offset);
+    commitOffset(topic, consumerGroup, offset) {
+        this._assertOpen();
+        const r = ffi().commit_offset(this._handle, topic, consumerGroup, offset);
+        if (r !== 0) throw _err(this._handle, 'commitOffset');
     }
 
-    unsubscribe(subId) { ffi().unsubscribe(this._handle, subId); }
+    unsubscribe(subId) {
+        this._assertOpen();
+        ffi().unsubscribe(this._handle, subId);
+    }
     dropTopic(topic) {
+        this._assertOpen();
         if (ffi().drop_topic(this._handle, topic) !== 0) throw _err(this._handle, 'dropTopic');
     }
     listTopics() {
-        const s = ffi().list_topics(this._handle);
+        this._assertOpen();
+        const s = _readAndFreeNullable(ffi().list_topics(this._handle));
         return s ? JSON.parse(s) : [];
     }
 }
