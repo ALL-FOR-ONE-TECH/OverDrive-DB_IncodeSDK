@@ -29,8 +29,8 @@ function findLib() {
         if (fs.existsSync(process.env.OVERDRIVE_LIB_PATH)) return process.env.OVERDRIVE_LIB_PATH;
     }
 
-    // 2. Bundled lib/{os}-{arch}/
-    const bundled = path.join(__dirname, '..', 'lib', platform(), name);
+    // 2. Bundled lib/{os}-{arch}/ — CI copies lib/ into nodejs/lib/ before publish
+    const bundled = path.join(__dirname, 'lib', platform(), name);
     if (fs.existsSync(bundled)) return bundled;
 
     // 3. Same dir as index.js
