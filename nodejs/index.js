@@ -20,6 +20,7 @@ function ffi() {
         open_with_password: lib.func('void * overdrive_open_with_password(const char *path, const char *password)'),
         close:              lib.func('void overdrive_close(void *handle)'),
         sync:               lib.func('void overdrive_sync(void *handle)'),
+        // version/last_error: const char* — Koffi can auto-convert, no free needed
         version:            lib.func('const char * overdrive_version()'),
         free_string:        lib.func('void overdrive_free_string(void *ptr)'),
         last_error:         lib.func('const char * overdrive_last_error()'),
@@ -27,67 +28,67 @@ function ffi() {
         // Tables
         create_table:       lib.func('int overdrive_create_table(void *handle, const char *name)'),
         drop_table:         lib.func('int overdrive_drop_table(void *handle, const char *name)'),
-        list_tables:        lib.func('char * overdrive_list_tables(void *handle)'),
+        list_tables:        lib.func('void * overdrive_list_tables(void *handle)'),
         table_exists:       lib.func('int overdrive_table_exists(void *handle, const char *name)'),
-        // CRUD
-        insert:             lib.func('char * overdrive_insert(void *handle, const char *table, const char *json)'),
-        get:                lib.func('char * overdrive_get(void *handle, const char *table, const char *id)'),
+        // CRUD — void* keeps raw pointer so we can free it ourselves
+        insert:             lib.func('void * overdrive_insert(void *handle, const char *table, const char *json)'),
+        get:                lib.func('void * overdrive_get(void *handle, const char *table, const char *id)'),
         update:             lib.func('int overdrive_update(void *handle, const char *table, const char *id, const char *json)'),
         delete:             lib.func('int overdrive_delete(void *handle, const char *table, const char *id)'),
         count:              lib.func('int overdrive_count(void *handle, const char *table)'),
-        get_history:        lib.func('char * overdrive_get_history(void *handle, const char *table, const char *id)'),
+        get_history:        lib.func('void * overdrive_get_history(void *handle, const char *table, const char *id)'),
         // Query / Search
-        query:              lib.func('char * overdrive_query(void *handle, const char *sql)'),
-        query_safe:         lib.func('char * overdrive_query_safe(void *handle, const char *sql, const char *params)'),
-        search:             lib.func('char * overdrive_search(void *handle, const char *table, const char *text)'),
+        query:              lib.func('void * overdrive_query(void *handle, const char *sql)'),
+        query_safe:         lib.func('void * overdrive_query_safe(void *handle, const char *sql, const char *params)'),
+        search:             lib.func('void * overdrive_search(void *handle, const char *table, const char *text)'),
         // Transactions
         begin_txn:          lib.func('uint64_t overdrive_begin_transaction(void *handle, int iso)'),
         commit_txn:         lib.func('int overdrive_commit_transaction(void *handle, uint64_t txn_id)'),
         abort_txn:          lib.func('int overdrive_abort_transaction(void *handle, uint64_t txn_id)'),
         // Integrity / Backup
-        verify_integrity:   lib.func('char * overdrive_verify_integrity(void *handle)'),
-        backup:             lib.func('char * overdrive_backup(void *handle, const char *dest)'),
+        verify_integrity:   lib.func('void * overdrive_verify_integrity(void *handle)'),
+        backup:             lib.func('void * overdrive_backup(void *handle, const char *dest)'),
         cleanup_wal:        lib.func('int overdrive_cleanup_wal(void *handle)'),
         // Engine info
-        get_engine_type:    lib.func('char * overdrive_get_engine_type(void *handle)'),
-        memory_usage:       lib.func('char * overdrive_memory_usage(void *handle)'),
+        get_engine_type:    lib.func('void * overdrive_get_engine_type(void *handle)'),
+        memory_usage:       lib.func('void * overdrive_memory_usage(void *handle)'),
         set_auto_create:    lib.func('void overdrive_set_auto_create_tables(void *handle, int enabled)'),
         // RAM engine
         create_ram_db:      lib.func('void * overdrive_create_ram_db()'),
         create_ram_table:   lib.func('int overdrive_create_ram_table(void *handle, const char *name, const char *schema)'),
         snapshot:           lib.func('int overdrive_snapshot(void *handle, const char *dest)'),
         restore:            lib.func('int overdrive_restore(void *handle, const char *src)'),
-        // Time-Series engine — real Rust sigs
+        // Time-Series engine
         create_timeseries:    lib.func('int overdrive_create_timeseries(void *handle, const char *name, uint64_t ttl_seconds)'),
         insert_measurement:   lib.func('int overdrive_insert_measurement(void *handle, const char *series, const char *measurement_json)'),
-        query_timeseries:     lib.func('char * overdrive_query_timeseries(void *handle, const char *series, int64_t start_ts, int64_t end_ts)'),
-        aggregate_timeseries: lib.func('char * overdrive_aggregate_timeseries(void *handle, const char *series, int64_t start_ts, int64_t end_ts, int64_t window_sec, const char *aggregation)'),
+        query_timeseries:     lib.func('void * overdrive_query_timeseries(void *handle, const char *series, int64_t start_ts, int64_t end_ts)'),
+        aggregate_timeseries: lib.func('void * overdrive_aggregate_timeseries(void *handle, const char *series, int64_t start_ts, int64_t end_ts, int64_t window_sec, const char *aggregation)'),
         drop_timeseries:      lib.func('int overdrive_drop_timeseries(void *handle, const char *name)'),
-        list_timeseries:      lib.func('char * overdrive_list_timeseries(void *handle)'),
-        // Vector engine — correct sigs
+        list_timeseries:      lib.func('void * overdrive_list_timeseries(void *handle)'),
+        // Vector engine
         create_vector_index:  lib.func('int overdrive_create_vector_index(void *handle, const char *table, const char *field, uint32_t dimensions, const char *metric)'),
-        insert_vector:        lib.func('char * overdrive_insert_vector(void *handle, const char *table, const char *json_doc, const char *embedding_json)'),
-        vector_search:        lib.func('char * overdrive_vector_search(void *handle, const char *table, const char *query_vec_json, uint32_t limit, const char *metric)'),
+        insert_vector:        lib.func('void * overdrive_insert_vector(void *handle, const char *table, const char *json_doc, const char *embedding_json)'),
+        vector_search:        lib.func('void * overdrive_vector_search(void *handle, const char *table, const char *query_vec_json, uint32_t limit, const char *metric)'),
         drop_vector_index:    lib.func('int overdrive_drop_vector_index(void *handle, const char *table)'),
-        list_vector_indexes:  lib.func('char * overdrive_list_vector_indexes(void *handle)'),
-        // Graph engine — correct sigs
+        list_vector_indexes:  lib.func('void * overdrive_list_vector_indexes(void *handle)'),
+        // Graph engine
         create_node_type:     lib.func('int overdrive_create_node_type(void *handle, const char *type_name)'),
         create_edge_type:     lib.func('int overdrive_create_edge_type(void *handle, const char *type_name)'),
-        create_node:          lib.func('char * overdrive_create_node(void *handle, const char *type_name, const char *props_json)'),
-        create_edge:          lib.func('int overdrive_create_edge(void *handle, const char *edge_type, const char *from_id, const char *to_id, const char *props_json)'),
-        graph_traverse:       lib.func('char * overdrive_graph_traverse(void *handle, const char *start_id, const char *direction, int max_depth)'),
-        shortest_path:        lib.func('char * overdrive_shortest_path(void *handle, const char *from_id, const char *to_id)'),
+        create_node:          lib.func('void * overdrive_create_node(void *handle, const char *type_name, const char *props_json)'),
+        create_edge:          lib.func('void * overdrive_create_edge(void *handle, const char *edge_type, const char *from_id, const char *to_id, const char *props_json)'),
+        graph_traverse:       lib.func('void * overdrive_graph_traverse(void *handle, const char *match_query)'),
+        shortest_path:        lib.func('void * overdrive_shortest_path(void *handle, const char *from_id, const char *to_id)'),
         delete_node:          lib.func('int overdrive_delete_node(void *handle, const char *node_id)'),
-        list_nodes:           lib.func('char * overdrive_list_nodes(void *handle, const char *type_name)'),
-        // Streaming engine — real Rust sigs
+        list_nodes:           lib.func('void * overdrive_list_nodes(void *handle, const char *type_name)'),
+        // Streaming engine
         create_topic:         lib.func('int overdrive_create_topic(void *handle, const char *topic_name, uint32_t partitions, uint64_t retention_seconds)'),
-        publish:              lib.func('char * overdrive_publish(void *handle, const char *topic_name, const char *message_json)'),
-        subscribe:            lib.func('char * overdrive_subscribe(void *handle, const char *topic_name, const char *consumer_group, const char *offset_mode)'),
-        poll:                 lib.func('char * overdrive_poll(void *handle, uint64_t subscription_id, uint32_t max_messages, uint32_t timeout_ms)'),
+        publish:              lib.func('void * overdrive_publish(void *handle, const char *topic_name, const char *message_json)'),
+        subscribe:            lib.func('void * overdrive_subscribe(void *handle, const char *topic_name, const char *consumer_group, const char *offset_mode)'),
+        poll:                 lib.func('void * overdrive_poll(void *handle, uint64_t subscription_id, uint32_t max_messages, uint32_t timeout_ms)'),
         commit_offset:        lib.func('int overdrive_commit_offset(void *handle, const char *topic_name, const char *consumer_group, uint64_t offset)'),
         unsubscribe:          lib.func('int overdrive_unsubscribe(void *handle, uint64_t subscription_id)'),
         drop_topic:           lib.func('int overdrive_drop_topic(void *handle, const char *topic)'),
-        list_topics:          lib.func('char * overdrive_list_topics(void *handle)'),
+        list_topics:          lib.func('void * overdrive_list_topics(void *handle)'),
     };
     return _ffi;
 }
@@ -117,22 +118,34 @@ function _safeJson(str) {
 }
 
 /**
- * MEMORY: read a Rust-heap char* pointer into a JS string then free it.
- * Koffi copies the bytes to JS but does NOT free the native pointer.
- * Every non-const char* returned by the DLL must be freed here.
+ * MEMORY: read a Rust-heap pointer into a JS string then free the original pointer.
+ *
+ * WHY void* not char*:
+ *   When Koffi sees `char *` as a return type it auto-converts to a JS string
+ *   and DISCARDS the original C pointer.  _readAndFree then passes the JS
+ *   string to free_string — Koffi wraps it in a fresh malloc'd buffer, and
+ *   Rust's CString::from_raw tries to free that malloc'd memory with its own
+ *   allocator → SIGSEGV.
+ *
+ *   By declaring `void *`, Koffi keeps the raw pointer. We decode it with
+ *   koffi.decode(), then pass the REAL Rust-heap pointer to free_string.
  */
+const koffi = require('koffi');
+
 function _readAndFree(ptr, op, handle) {
     if (!ptr) throw _err(handle, op);
-    // koffi has already materialised ptr as a JS string at this point;
-    // call free_string so Rust's allocator reclaims the memory.
+    // Decode the Rust-heap bytes to a JS string without losing the pointer
+    const str = koffi.decode(ptr, 'char', -1);  // -1 = null-terminated
+    // Free the REAL Rust-allocated pointer — not a JS string copy
     try { ffi().free_string(ptr); } catch (_) { /* best effort */ }
-    return ptr;  // the JS string copy is still valid after free
+    return str;
 }
 
 function _readAndFreeNullable(ptr) {
     if (!ptr) return null;
+    const str = koffi.decode(ptr, 'char', -1);
     try { ffi().free_string(ptr); } catch (_) { /* best effort */ }
-    return ptr;
+    return str;
 }
 
 // ── Isolation levels ─────────────────────────────────────────────────────────
@@ -456,15 +469,17 @@ class OverdriveDb {
 
     createEdge(typeName, fromId, toId, props = {}) {
         this._assertOpen();
-        const r = ffi().create_edge(this._handle, typeName, fromId, toId, JSON.stringify(props));
-        if (r !== 0) throw _err(this._handle, 'createEdge');
+        // Rust returns void* (edge ID string) — must _readAndFree, not check === 0
+        return _readAndFree(ffi().create_edge(this._handle, typeName, fromId, toId, JSON.stringify(props)), 'createEdge', this._handle);
     }
 
-    graphTraverse(startId, direction = 'outbound', maxDepth = 3) {
+    graphTraverse(query) {
         this._assertOpen();
-        const s = _readAndFreeNullable(ffi().graph_traverse(this._handle, startId, direction, maxDepth));
+        // Rust takes a single match_query string (Cypher-like), not (startId, direction, maxDepth)
+        const s = _readAndFreeNullable(ffi().graph_traverse(this._handle, query));
         return s ? JSON.parse(s) : [];
     }
+
 
     shortestPath(fromId, toId) {
         this._assertOpen();
