@@ -2,7 +2,7 @@
 /// Instance name: odb (convention throughout)
 /// Run: cargo test --test e2e -- --nocapture
 
-use overdrive::{OverdriveDb, IsolationLevel};
+use overdrive::OverdriveDb;
 use serde_json::json;
 use std::path::Path;
 
@@ -175,9 +175,9 @@ fn test_09_table_exists() {
 // ── TEST 10 ──────────────────────────────────────────────────────────────────
 #[test]
 fn test_10_version() {
-    let v = OverdriveDb::version();
+    let v = OverdriveDb::version().expect("version lookup failed");
     assert!(!v.is_empty(), "❌ version empty");
     assert_ne!(v, "unknown", "❌ native lib not loaded");
-    assert_eq!(v, "2.2.0", "❌ expected v2.2.0, got {}", v);
+    assert_eq!(v, "2.3.0", "❌ expected v2.3.0, got {}", v);
     println!("✅ TEST 10 — odb version: {}", v);
 }

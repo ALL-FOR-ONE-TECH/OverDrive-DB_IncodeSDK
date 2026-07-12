@@ -33,7 +33,7 @@ package overdrive
 // back as a normal Go `error`.
 
 /*
-#cgo LDFLAGS: -ldl
+#cgo linux LDFLAGS: -ldl
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <stdint.h>

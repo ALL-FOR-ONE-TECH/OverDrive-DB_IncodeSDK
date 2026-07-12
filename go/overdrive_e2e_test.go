@@ -174,7 +174,7 @@ func TestVersion(t *testing.T) {
 	v := overdrive.Version()
 	if v == "" { t.Fatal("❌ version empty") }
 	if v == "unknown" { t.Fatal("❌ native lib not loaded") }
-	if v != "2.2.0" { t.Fatalf("❌ expected 2.2.0, got %s", v) }
+	if v != "2.3.0" { t.Fatalf("❌ expected 2.3.0, got %s", v) }
 	fmt.Printf("✅ TEST 10 — odb version: %s\n", v)
 }
 
