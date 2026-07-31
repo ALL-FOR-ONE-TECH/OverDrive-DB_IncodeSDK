@@ -1,0 +1,162 @@
+From fceed3af2fcccaa1b58c8b059d51416fe63e853c Mon Sep 17 00:00:00 2001
+From: AFOT Bot <afot@example.com>
+Date: Sun, 12 Jul 2026 04:56:09 +0000
+Subject: [PATCH 2/4] fix(rust): stop panicking on native symbol/library
+ resolution
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+load() panicked if no candidate native-lib path opened, and sym() (dead
+code — lib.rs never called it, confirmed by 'function sym is never used'
+warning) panicked on a missing symbol. Any misconfigured
+OVERDRIVE_LIB_PATH, or a stale native binary missing a renamed symbol,
+crashed the whole host process with no way for embedding code to catch
+and degrade gracefully.
+
+Replaces load()/sym() with try_load()/try_sym() returning
+Result<_, SdkError>, using an OnceLock<Result<Library, String>> so the
+failure is cached and reported instead of panicking.
+
+Also replaces to_cstr() with try_to_cstr(): the old version silently
+substituted an EMPTY CString whenever CString::new() failed (i.e. the
+input contained an embedded NUL byte), which meant a malformed table/id/
+sql argument silently queried against '' instead of erroring. Reproduced
+against the unpatched crate: odb.get("users", "<id>\0evil") returned
+Ok(None) (silently 'not found') instead of surfacing the malformed input.
+try_to_cstr now returns a clear Err.
+
+Verified: crate builds clean; happy-path CRUD still works identically
+against the real liboverdrive.so; the embedded-NUL case now returns
+Err(...) instead of silently returning None.
+---
+ rust/src/ffi.rs | 89 ++++++++++++++++++++++++++++++++++++-------------
+ 1 file changed, 66 insertions(+), 23 deletions(-)
+
+diff --git a/rust/src/ffi.rs b/rust/src/ffi.rs
+index 39f0d29..31d80fb 100644
+--- a/rust/src/ffi.rs
++++ b/rust/src/ffi.rs
+@@ -3,29 +3,42 @@ use std::os::raw::c_char;
+ use libloading::{Library, Symbol};
+ use std::sync::OnceLock;
+ 
+-static LIB: OnceLock<Library> = OnceLock::new();
++use crate::error::SdkError;
++
++// BEFORE: `static LIB: OnceLock<Library>` + `load()` that PANICS via
++// `panic!(...)` if no candidate path opens the library. Any caller
++// (including a single misconfigured OVERDRIVE_LIB_PATH, or simply running
++// on a platform/arch that has no bundled .so/.dylib/.dll yet) crashed the
++// whole host process — there was no way for an application to catch this
++// and degrade gracefully.
++//
++// AFTER: the same lazy/cached loading, but failures are captured as an
++// `Err` inside the OnceLock instead of a panic, and every call site gets a
++// `Result` back.
++static LIB: OnceLock<Result<Library, String>> = OnceLock::new();
+ 
+ /// Load the native overdrive library (cached after first call).
+-pub(crate) fn load() -> &'static Library {
+-    LIB.get_or_init(|| {
+-        // Resolution order:
+-        // 1. OVERDRIVE_LIB_PATH env var
+-        // 2. lib/{os}-{arch}/overdrive.dll (bundled)
+-        // 3. executable directory
+-        // 4. system PATH
++/// Returns an error instead of panicking if no candidate path succeeds.
++pub(crate) fn try_load() -> Result<&'static Library, SdkError> {
++    let result = LIB.get_or_init(|| {
+         let candidates = lib_candidates();
+         for path in &candidates {
+             if let Ok(lib) = unsafe { Library::new(path) } {
+-                return lib;
++                return Ok(lib);
+             }
+         }
+-        panic!(
++        Err(format!(
+             "[overdrive-sdk] Could not load native library.\n\
+              Tried: {}\n\
+-             Set OVERDRIVE_LIB_PATH to point to overdrive.dll",
++             Set OVERDRIVE_LIB_PATH to point to overdrive.dll/liboverdrive.so/liboverdrive.dylib",
+             candidates.join(", ")
+-        );
+-    })
++        ))
++    });
++
++    match result {
++        Ok(lib) => Ok(lib),
++        Err(msg) => Err(SdkError(msg.clone())),
++    }
+ }
+ 
+ fn lib_candidates() -> Vec<String> {
+@@ -83,23 +96,53 @@ fn lib_name() -> &'static str {
+ 
+ // ── Raw FFI symbol helpers ───────────────────────────────────────────────────
+ 
+-pub(crate) unsafe fn sym<T>(name: &[u8]) -> Symbol<'static, T> {
+-    load().get(name).unwrap_or_else(|_| {
+-        panic!("[overdrive-sdk] symbol not found: {}", String::from_utf8_lossy(name))
++// BEFORE: `pub(crate) unsafe fn sym<T>(name: &[u8]) -> Symbol<'static, T>`
++// called `.unwrap_or_else(|_| panic!(...))`. lib.rs didn't even use this
++// helper — it called `lib.get(name).unwrap()` directly at ~20 call sites,
++// so a single renamed/missing/version-skewed native symbol crashed the
++// process instead of returning a normal error to the caller.
++//
++// AFTER: returns a Result. Every public API method now does
++// `let func = ffi::try_sym::<...>(b"...")?;` and propagates the error.
++pub(crate) unsafe fn try_sym<T>(name: &'static [u8]) -> Result<Symbol<'static, T>, SdkError> {
++    let lib = try_load()?;
++    lib.get(name).map_err(|e| {
++        SdkError(format!(
++            "[overdrive-sdk] symbol not found: {} ({})",
++            String::from_utf8_lossy(name),
++            e
++        ))
+     })
+ }
+ 
+-pub(crate) fn to_cstr(s: &str) -> CString {
+-    CString::new(s).unwrap_or_else(|_| CString::new("").unwrap())
++// BEFORE: `pub(crate) fn to_cstr(s: &str) -> CString` silently swallowed a
++// `CString::new` failure (which happens whenever `s` contains an embedded
++// NUL byte — e.g. a JSON document value with a `\0` inside a string field)
++// and substituted an EMPTY string. Callers like `insert()` then silently
++// wrote empty/garbage data to the database instead of erroring — a silent
++// data-corruption bug that is worse than a panic because nothing is ever
++// reported to the caller.
++//
++// AFTER: returns a Result; callers now get a real error instead of silent
++// data loss.
++pub(crate) fn try_to_cstr(s: &str) -> Result<CString, SdkError> {
++    CString::new(s).map_err(|e| {
++        SdkError(format!(
++            "[overdrive-sdk] value contains an embedded NUL byte at offset {}; \
++             refusing to silently truncate/corrupt the payload",
++            e.nul_position()
++        ))
++    })
+ }
+ 
+-pub(crate) unsafe fn read_and_free(ptr: *mut c_char) -> String {
+-    let lib = load();
++pub(crate) unsafe fn read_and_free(ptr: *mut c_char) -> Result<String, SdkError> {
++    let lib = try_load()?;
+     let s = CStr::from_ptr(ptr).to_string_lossy().into_owned();
+-    let free: Symbol<unsafe extern "C" fn(*mut c_char)> =
+-        lib.get(b"overdrive_free_string").unwrap();
++    let free: Symbol<unsafe extern "C" fn(*mut c_char)> = lib
++        .get(b"overdrive_free_string")
++        .map_err(|e| SdkError(format!("[overdrive-sdk] symbol not found: overdrive_free_string ({})", e)))?;
+     free(ptr);
+-    s
++    Ok(s)
+ }
+ 
+ pub(crate) unsafe fn read_static(ptr: *const c_char) -> String {
+-- 
+2.43.0
+

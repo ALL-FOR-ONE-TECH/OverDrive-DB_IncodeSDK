@@ -39,5 +39,8 @@ packages = ["overdrive"]
 [tool.hatch.build.targets.sdist]
 include = ["overdrive/**", "tests/**", "pyproject.toml"]
 
+[tool.setuptools.package-data]
+overdrive = ["*.dll", "*.so", "*.dylib"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
