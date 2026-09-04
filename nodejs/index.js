@@ -111,8 +111,10 @@ function _safeJson(str) {
     if (!str) return null;
     const obj = JSON.parse(str);
     if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-        if ('__proto__' in obj || 'constructor' in obj || 'prototype' in obj)
+        if (Object.prototype.hasOwnProperty.call(obj, '__proto__') ||
+            Object.prototype.hasOwnProperty.call(obj, 'prototype')) {
             throw new Error('[overdrive-db] Rejected: dangerous prototype key in response');
+        }
     }
     return obj;
 }
@@ -581,4 +583,4 @@ class OverdriveDb {
     }
 }
 
-module.exports = { OverdriveDb, IsolationLevel };
+module.exports = { OverdriveDb, OverDrive: OverdriveDb, IsolationLevel };

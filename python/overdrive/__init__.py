@@ -316,3 +316,7 @@ class OverdriveDb:
         if not ptr:
             raise RuntimeError(f"[overdrive] verify_integrity: {_native.last_error(self._lib)}")
         return json.loads(_native.read_free(self._lib, ptr))
+
+# Aliases for backward and cross-SDK compatibility
+OverDrive = OverdriveDb
+__all__ = ["OverdriveDb", "OverDrive", "IsolationLevel"]

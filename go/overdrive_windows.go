@@ -73,17 +73,19 @@ func cstr(s string) uintptr {
 
 func gostr(ptr uintptr) string {
 	if ptr == 0 { return "" }
-	p := (*[1 << 20]byte)(unsafe.Pointer(ptr))
+	p := *(**[1 << 20]byte)(unsafe.Pointer(&ptr))
+	if p == nil { return "" }
 	n := 0
 	for p[n] != 0 { n++ }
 	s := string(p[:n])
-	procFreeString.Call(ptr) //nolint:unsafeptr
+	procFreeString.Call(ptr)
 	return s
 }
 
 func gostrStatic(ptr uintptr) string {
 	if ptr == 0 { return "" }
-	p := (*[1 << 20]byte)(unsafe.Pointer(ptr))
+	p := *(**[1 << 20]byte)(unsafe.Pointer(&ptr))
+	if p == nil { return "" }
 	n := 0
 	for p[n] != 0 { n++ }
 	return string(p[:n])

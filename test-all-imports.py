@@ -13,7 +13,7 @@ def test_python_sdk():
     
     try:
         # Add SDK to path
-        sdk_path = Path(__file__).parent / "sdks" / "python"
+        sdk_path = Path(__file__).parent / "python"
         sys.path.insert(0, str(sdk_path))
         
         from overdrive import OverDrive
@@ -48,7 +48,7 @@ def test_nodejs_sdk():
     import subprocess
     
     test_script = '''
-const { OverDrive } = require('./sdks/nodejs');
+const { OverDrive } = require('./nodejs');
 console.log("[OK] Node.js SDK imported successfully");
 const version = OverDrive.version();
 console.log(`[OK] Version: ${version}`);
@@ -80,13 +80,13 @@ def test_java_sdk():
     print("Testing Java SDK...")
     
     # Check if Java SDK files exist
-    java_sdk_path = Path("sdks/java/src/main/java/com/afot/overdrive")
+    java_sdk_path = Path("java/src/main/java/com/afot/overdrive")
     if not java_sdk_path.exists():
         print("[FAIL] Java SDK source directory not found")
         return False
     
     # Check if native libraries are in resources
-    resources_path = Path("sdks/java/src/main/resources/native/windows/overdrive.dll")
+    resources_path = Path("java/src/main/resources/native/windows/overdrive.dll")
     if not resources_path.exists():
         print("[FAIL] Java SDK native library not found in resources")
         return False
@@ -100,7 +100,7 @@ def test_go_sdk():
     """Test Go SDK by checking if files exist"""
     print("Testing Go SDK...")
     
-    go_sdk_path = Path("sdks/go/overdrive.go")
+    go_sdk_path = Path("go/overdrive.go")
     if not go_sdk_path.exists():
         print("[FAIL] Go SDK file not found")
         return False
@@ -113,7 +113,7 @@ def test_c_sdk():
     """Test C SDK by checking header file"""
     print("Testing C SDK...")
     
-    c_sdk_path = Path("sdks/c/include/overdrive.h")
+    c_sdk_path = Path("c/include/overdrive.h")
     if not c_sdk_path.exists():
         print("[FAIL] C SDK header not found")
         return False

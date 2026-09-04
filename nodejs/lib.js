@@ -23,21 +23,33 @@ function platform() {
 
 function findLib() {
     const name = libName();
+    const plat = platform();
+    const osName = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux';
+    const archName = process.arch === 'x64' ? 'x64' : process.arch === 'arm64' ? 'arm64' : process.arch;
 
     // 1. Env override
     if (process.env.OVERDRIVE_LIB_PATH) {
         if (fs.existsSync(process.env.OVERDRIVE_LIB_PATH)) return process.env.OVERDRIVE_LIB_PATH;
     }
 
-    // 2. Bundled lib/{os}-{arch}/ — CI copies lib/ into nodejs/lib/ before publish
-    const bundled = path.join(__dirname, 'lib', platform(), name);
-    if (fs.existsSync(bundled)) return bundled;
+    // 2. Search local and parent directories up to repo root
+    let dir = __dirname;
+    for (let i = 0; i < 4; i++) {
+        const candidates = [
+            path.join(dir, 'lib', plat, name),
+            path.join(dir, 'native', osName, name),
+            path.join(dir, 'native', osName, archName, name),
+            path.join(dir, name),
+        ];
+        for (const candidate of candidates) {
+            if (fs.existsSync(candidate)) return candidate;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+    }
 
-    // 3. Same dir as index.js
-    const local = path.join(__dirname, name);
-    if (fs.existsSync(local)) return local;
-
-    // 4. System PATH (let koffi try)
+    // 3. System PATH (let koffi try)
     return name;
 }
 

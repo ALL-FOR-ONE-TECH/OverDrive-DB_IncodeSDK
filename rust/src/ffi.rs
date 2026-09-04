@@ -52,21 +52,38 @@ fn lib_candidates() -> Vec<String> {
     // 2. Bundled — resolve relative to this .rlib's manifest dir
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let (os, arch) = platform();
-    let bundled = manifest
-        .parent().unwrap_or(manifest)
+    let root = manifest.parent().unwrap_or(manifest);
+
+    // Check centralized native/ directory
+    let native_platform_dir = match std::env::consts::OS {
+        "windows" => "windows".to_string(),
+        "macos"   => format!("macos/{}", if std::env::consts::ARCH == "aarch64" { "arm64" } else { "x64" }),
+        _         => format!("linux/{}", if std::env::consts::ARCH == "aarch64" { "arm64" } else { "x64" }),
+    };
+    let native_path = root.join("native").join(&native_platform_dir).join(lib_name());
+    v.push(native_path.to_string_lossy().into_owned());
+
+    let bundled = root
         .join("lib")
         .join(format!("{}-{}", os, arch))
         .join(lib_name());
     v.push(bundled.to_string_lossy().into_owned());
 
-    // 3. Executable directory
+    // 3. Current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        v.push(cwd.join("native").join(&native_platform_dir).join(lib_name()).to_string_lossy().into_owned());
+        v.push(cwd.join("lib").join(format!("{}-{}", os, arch)).join(lib_name()).to_string_lossy().into_owned());
+        v.push(cwd.join(lib_name()).to_string_lossy().into_owned());
+    }
+
+    // 4. Executable directory
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             v.push(dir.join(lib_name()).to_string_lossy().into_owned());
         }
     }
 
-    // 4. System name (PATH/LD_LIBRARY_PATH)
+    // 5. System name (PATH/LD_LIBRARY_PATH)
     v.push(lib_name().to_string());
     v
 }

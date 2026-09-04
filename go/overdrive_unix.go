@@ -1,10 +1,7 @@
-//go:build !windows
+//go:build !windows && cgo
 
 package overdrive
 
-// BEFORE: this file did not exist. The only native-symbol implementation
-// in the whole module was `overdrive_windows.go`, and Go's build system
-// automatically restricts any `_windows.go` file to `GOOS=windows` by
 // filename convention. `overdrive.go` (the cross-platform façade) calls
 // `nativeOpen`, `nativeClose`, `nativeInsert`, etc. unconditionally — but
 // on Linux and macOS those functions were defined NOWHERE, so:

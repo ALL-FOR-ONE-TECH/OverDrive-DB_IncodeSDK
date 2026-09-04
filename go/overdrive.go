@@ -57,7 +57,7 @@ func libPath() string {
 		return p
 	}
 
-	// 2. Bundled lib/{os}-{arch}/
+	// 2. Centralized native/ or bundled lib/
 	_, file, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(file)
 	os_name := map[string]string{"windows": "windows", "linux": "linux", "darwin": "macos"}[runtime.GOOS]
@@ -65,9 +65,28 @@ func libPath() string {
 	if os_name == "" { os_name = runtime.GOOS }
 	if arch == "" { arch = runtime.GOARCH }
 	name := libName()
-	bundled := filepath.Join(dir, "..", "lib", os_name+"-"+arch, name)
-	if _, err := os.Stat(bundled); err == nil {
-		return bundled
+
+	var platformSubdir string
+	if runtime.GOOS == "windows" {
+		platformSubdir = "windows"
+	} else if runtime.GOARCH == "arm64" {
+		platformSubdir = os_name + "/arm64"
+	} else {
+		platformSubdir = os_name + "/x64"
+	}
+
+	candidates := []string{
+		filepath.Join(dir, "..", "native", platformSubdir, name),
+		filepath.Join(dir, "..", "native", "windows", name),
+		filepath.Join(dir, "..", "lib", os_name+"-"+arch, name),
+		filepath.Join(dir, "native", platformSubdir, name),
+		filepath.Join(dir, "lib", os_name+"-"+arch, name),
+		filepath.Join(dir, name),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
 	}
 
 	// 3. Fallback: system
