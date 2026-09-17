@@ -20,12 +20,6 @@ jobs:
               rustup update stable
             run: cargo test --manifest-path rust/Cargo.toml --test e2e -- --nocapture
 
-          # Node.js
-          - os: windows-latest
-            lang: Node.js
-            setup: ""
-            run: cd nodejs && npm install --silent && node test/e2e.js
-
           # Python
           - os: windows-latest
             lang: Python

@@ -196,7 +196,7 @@ public class OverdriveDbE2ETest {
         assertNotNull(v);
         assertFalse(v.isEmpty(), "❌ version empty");
         assertNotEquals("unknown", v, "❌ native lib not loaded");
-        assertEquals("2.2.0", v, "❌ expected 2.2.0, got " + v);
+        assertEquals("2.3.0", v, "❌ expected 2.3.0, got " + v);
         System.out.println("  ✅ TEST 10 — odb version: " + v);
     }
 }

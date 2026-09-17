@@ -145,6 +145,6 @@ def test_10_version():
     v = OverdriveDb.version()
     assert v and len(v) > 0, "âŒ version empty"
     assert v != "unknown",   "âŒ native lib not loaded"
-    assert v == "2.2.0",     f"âŒ expected 2.2.0, got {v}"
+    assert v == "2.3.0",     f"âŒ expected 2.3.0, got {v}"
     print(f"\n  â†’ version: {v}")
 
